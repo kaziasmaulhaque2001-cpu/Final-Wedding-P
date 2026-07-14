@@ -1,0 +1,8 @@
+{
+  "name": "Asmaul Production - Photography Manager",
+  "description": "A premium black and gold photography management system with offline support, auto-sync, production & freelancer bookings, payment tracker, calendar, and search.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

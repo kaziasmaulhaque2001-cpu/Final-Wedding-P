@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Validation for Bookings
+    function isValidBooking(booking) {
+      return booking.keys().hasAll(['id', 'clientName', 'weddingDate', 'venue', 'packageName', 'totalAmount', 'paidAmount', 'status', 'type', 'photographer', 'createdAt', 'updatedAt', 'userId'])
+        && booking.id is string && booking.id.size() <= 128
+        && booking.clientName is string && booking.clientName.size() <= 200
+        && booking.weddingDate is string && booking.weddingDate.size() <= 20
+        && booking.venue is string && booking.venue.size() <= 300
+        && booking.packageName is string && booking.packageName.size() <= 200
+        && booking.totalAmount is number
+        && booking.paidAmount is number
+        && booking.status in ['pending', 'confirmed', 'completed', 'cancelled', 'in_progress']
+        && booking.type in ['production', 'freelancer']
+        && booking.photographer is string && booking.photographer.size() <= 200
+        && booking.createdAt is number
+        && booking.updatedAt is number
+        && booking.userId is string && booking.userId.size() <= 128;
+    }
+
+    // Validation for Payments
+    function isValidPayment(payment) {
+      return payment.keys().hasAll(['id', 'bookingId', 'clientName', 'amount', 'date', 'paymentMethod', 'status', 'createdAt', 'updatedAt', 'userId'])
+        && payment.id is string && payment.id.size() <= 128
+        && payment.bookingId is string && payment.bookingId.size() <= 128
+        && payment.clientName is string && payment.clientName.size() <= 200
+        && payment.amount is number
+        && payment.date is string && payment.date.size() <= 20
+        && payment.paymentMethod in ['Bank Transfer', 'Cash', 'Credit Card', 'PayPal', 'Other', 'UPI', 'Cheque', 'Card']
+        && payment.status in ['completed', 'pending']
+        && payment.createdAt is number
+        && payment.updatedAt is number
+        && payment.userId is string && payment.userId.size() <= 128;
+    }
+
+    // Bookings collection
+    match /bookings/{bookingId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Payments collection
+    match /payments/{paymentId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Settings collection
+    match /settings/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Secure Telegram Bot Configuration collection (locked client-side for maximum security)
+    match /telegram_secure/{userId} {
+      allow read, write: if false;
+    }
+
+    // Clients collection
+    match /clients/{clientId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Packages collection
+    match /packages/{packageId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Agreements collection
+    match /agreements/{agreementId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Invoices collection
+    match /invoices/{invoiceId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Receipts collection
+    match /receipts/{receiptId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "booking": {
+      "title": "Booking",
+      "description": "Wedding booking contract and scheduling parameters",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientEmail": { "type": "string" },
+        "clientPhone": { "type": "string" },
+        "weddingDate": { "type": "string" },
+        "venue": { "type": "string" },
+        "packageName": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "completed", "cancelled"] },
+        "type": { "type": "string", "enum": ["production", "freelancer"] },
+        "photographer": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "userId": { "type": "string" },
+        "freelancerRate": { "type": "number" }
+      },
+      "required": ["id", "clientName", "weddingDate", "venue", "packageName", "totalAmount", "paidAmount", "status", "type", "photographer", "createdAt", "updatedAt", "userId"]
+    },
+    "payment": {
+      "title": "Payment",
+      "description": "Financial ledger transactions and settlements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bookingId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["Bank Transfer", "Cash", "Credit Card", "PayPal", "Other"] },
+        "status": { "type": "string", "enum": ["completed", "pending"] },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "bookingId", "clientName", "amount", "date", "paymentMethod", "status", "createdAt", "updatedAt", "userId"]
+    }
+  },
+  "firestore": {
+    "/bookings/{bookingId}": {
+      "schema": "booking",
+      "description": "Collection of wedding contracts and status"
+    },
+    "/payments/{paymentId}": {
+      "schema": "payment",
+      "description": "Collection of transactional settlements"
+    }
+  }
+}
