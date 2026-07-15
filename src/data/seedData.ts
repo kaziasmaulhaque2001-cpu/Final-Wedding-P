@@ -1,7 +1,7 @@
 import { Booking, Payment } from '../types';
 import { offlineService } from '../services/offlineService';
 import { auth, db } from '../services/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 
 export const SEED_BOOKINGS: Booking[] = [
   {
@@ -190,15 +190,35 @@ export async function seedDatabaseIfEmpty() {
 
   const initKey = `vowsgold_db_initialized_${currentUser.uid}`;
 
-  // If already initialized on this client, NEVER seed again
+  // 1. NEVER seed in production mode. Seeding is strictly for local/dev environments.
+  const isDev = (import.meta as any).env?.DEV;
+  if (!isDev) {
+    console.log('Production environment detected. Seeding is completely disabled.');
+    localStorage.setItem(initKey, 'true');
+    return;
+  }
+
+  // 2. If already marked as initialized on this browser, skip checking
   if (localStorage.getItem(initKey) === 'true') {
     console.log('Database already initialized. Skipping seed.');
     return;
   }
   
-  // If user is online and authenticated, check Firestore first to prevent overwriting/re-seeding existing accounts
+  // 3. Since Firestore is the single source of truth, check if this user has already been initialized on the cloud.
+  // This ensures that even if they log in from a new device, computer, or browser, we will NOT re-seed.
   if (navigator.onLine) {
     try {
+      const seedMetaRef = doc(db, 'seeding_metadata', currentUser.uid);
+      const seedMetaSnap = await getDoc(seedMetaRef);
+      if (seedMetaSnap.exists()) {
+        console.log('Account has already completed initialization on Firestore. Skipping seed.');
+        localStorage.setItem(initKey, 'true');
+        // Ensure local IndexedDB is fully synchronized with existing Firestore data
+        await offlineService.syncAll();
+        return;
+      }
+
+      // Check if user has existing bookings anyway (safety check)
       const bookingsCol = collection(db, 'bookings');
       const q = query(bookingsCol, where('userId', '==', currentUser.uid));
       const snapshot = await getDocs(q);
@@ -206,20 +226,22 @@ export async function seedDatabaseIfEmpty() {
       if (!snapshot.empty) {
         console.log('User has existing bookings in Firestore. Skipping seed.');
         localStorage.setItem(initKey, 'true');
-        // Make sure our local DB gets synced by pulling
+        // Write the metadata so we never run this query again
+        await setDoc(seedMetaRef, { seeded: true, seededAt: Date.now() });
         await offlineService.syncAll();
         return;
       }
     } catch (error) {
-      console.error('Error checking Firestore for seed database:', error);
-      // If we are authenticated and online but checking fails, safety first: skip seeding to avoid corrupting remote data.
+      console.error('Error checking Firestore for seed metadata:', error);
+      // Safety first: if there is an error querying Firestore, skip seeding to avoid any risk of data contamination
       return;
     }
   }
 
+  // 4. Only seed if we are indeed in development, have no existing data, and have never seeded this account.
   const currentBookings = await offlineService.getBookings();
   if (currentBookings.length === 0) {
-    console.log('IndexedDB and Firestore are empty, seeding beautiful luxury photography data...');
+    console.log('IndexedDB and Firestore are empty, seeding beautiful luxury photography data in development...');
     
     // Save all bookings
     for (const booking of SEED_BOOKINGS) {
@@ -231,9 +253,19 @@ export async function seedDatabaseIfEmpty() {
       await offlineService.addPayment(payment);
     }
     
+    // Set cloud-hosted metadata to mark that seeding was performed so it NEVER repeats, even after deleting all bookings
+    if (navigator.onLine) {
+      try {
+        const seedMetaRef = doc(db, 'seeding_metadata', currentUser.uid);
+        await setDoc(seedMetaRef, { seeded: true, seededAt: Date.now() });
+      } catch (e) {
+        console.error('Failed to write seed metadata to Firestore:', e);
+      }
+    }
+
     console.log('Seeding finished successfully!');
   }
   
-  // Mark as initialized so we never seed again
+  // Mark as initialized locally so we never check again on this browser session/device
   localStorage.setItem(initKey, 'true');
 }

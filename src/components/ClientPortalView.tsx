@@ -53,6 +53,7 @@ import {
 import { PDFPreviewDialog } from './PDFPreviewDialog';
 import { useBrand } from '../contexts/BrandContext';
 import { buildAgreementPDF, downloadAgreementPDF } from '../utils/pdfGenerator';
+import { getBookingAlbums } from '../utils/statusUtils';
 
 interface ClientPortalViewProps {
   bookingId: string;
@@ -74,6 +75,96 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ bookingId })
 
   // Album Design Actions State
   const [viewOpen, setViewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState('');
+  const [brideFeedback, setBrideFeedback] = useState('');
+  const [groomFeedback, setGroomFeedback] = useState('');
+  const [brideFormOpen, setBrideFormOpen] = useState(false);
+  const [groomFormOpen, setGroomFormOpen] = useState(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
+
+  const handleApproveAlbum = async (type: 'bride' | 'groom') => {
+    if (!booking) return;
+    if (!window.confirm(`Are you sure you want to approve the ${type === 'bride' ? 'Bride' : 'Groom'} Album Design? This indicates you are completely satisfied with the layout.`)) {
+      return;
+    }
+
+    try {
+      const { brideAlbum, groomAlbum } = getBookingAlbums(booking);
+      const targetAlbum = type === 'bride' ? brideAlbum : groomAlbum;
+
+      const updatedAlbum = {
+        ...targetAlbum,
+        status: 'Approved' as const,
+        comments: '' // Clear comments upon approval
+      };
+
+      const docRef = doc(db, 'bookings', bookingId);
+      await updateDoc(docRef, {
+        ...(type === 'bride' ? { albumDesignStatus: 'Approved' } : {}),
+        brideAlbum: type === 'bride' ? updatedAlbum : brideAlbum,
+        groomAlbum: type === 'groom' ? updatedAlbum : groomAlbum,
+        updatedAt: Date.now()
+      });
+
+      setSnackbarMessage(`Thank you! Your ${type === 'bride' ? 'Bride' : 'Groom'} Album Design has been approved!`);
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+    } catch (err: any) {
+      console.error('Failed to approve album:', err);
+      setSnackbarMessage(`Failed to approve: ${err.message || err}`);
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
+  };
+
+  const handleSubmitFeedback = async (type: 'bride' | 'groom') => {
+    if (!booking) return;
+    const feedbackText = type === 'bride' ? brideFeedback : groomFeedback;
+    if (!feedbackText.trim()) {
+      alert('Please enter your feedback comments before submitting.');
+      return;
+    }
+
+    try {
+      const { brideAlbum, groomAlbum } = getBookingAlbums(booking);
+      const targetAlbum = type === 'bride' ? brideAlbum : groomAlbum;
+
+      const updatedAlbum = {
+        ...targetAlbum,
+        status: 'Changes Requested' as const,
+        comments: feedbackText
+      };
+
+      const docRef = doc(db, 'bookings', bookingId);
+      await updateDoc(docRef, {
+        ...(type === 'bride' ? { albumDesignStatus: 'Changes Requested' } : {}),
+        brideAlbum: type === 'bride' ? updatedAlbum : brideAlbum,
+        groomAlbum: type === 'groom' ? updatedAlbum : groomAlbum,
+        updatedAt: Date.now()
+      });
+
+      // Clear input and close form
+      if (type === 'bride') {
+        setBrideFeedback('');
+        setBrideFormOpen(false);
+      } else {
+        setGroomFeedback('');
+        setGroomFormOpen(false);
+      }
+
+      setSnackbarMessage(`Your feedback for the ${type === 'bride' ? 'Bride' : 'Groom'} Album has been submitted successfully.`);
+      setSnackbarSeverity('success');
+      setSnackbarOpen(true);
+    } catch (err: any) {
+      console.error('Failed to submit feedback:', err);
+      setSnackbarMessage(`Failed to submit: ${err.message || err}`);
+      setSnackbarSeverity('error');
+      setSnackbarOpen(true);
+    }
+  };
 
   // Agreement Actions State
   const [agreementOpen, setAgreementOpen] = useState(false);
@@ -794,92 +885,226 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ bookingId })
         </Box>
 
         {/* Album Design Card Section */}
-        <Box className="bg-[#141413] border border-[#D4AF37]/10 p-6 rounded-xl space-y-4">
+        <Box className="bg-[#141413] border border-[#D4AF37]/10 p-6 rounded-xl space-y-6">
           <Typography variant="subtitle2" className="text-[#D4AF37] font-bold uppercase tracking-wider text-xs flex items-center gap-2">
             <FileText className="w-4 h-4" />
             <span>📄 Album Design Portal</span>
           </Typography>
           <Divider className="border-gray-900" />
 
-          {booking.albumDesignPdfUrl ? (
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-black/20 p-4 rounded-lg border border-[#D4AF37]/5">
-                <div className="space-y-1">
-                  <Typography variant="caption" className="text-gray-500 uppercase tracking-widest text-[9px] block">
-                    Album Upload Date
-                  </Typography>
-                  <Typography variant="body2" className="text-white font-mono text-xs">
-                    {booking.albumDesignUploadDate || 'Not specified'}
+          {(() => {
+            const { showBride, showGroom, brideAlbum, groomAlbum } = getBookingAlbums(booking);
+            const activeAlbums = [];
+            if (showBride) {
+              activeAlbums.push({
+                type: 'bride' as const,
+                label: 'Bride Album Design',
+                data: brideAlbum,
+                formOpen: brideFormOpen,
+                setFormOpen: setBrideFormOpen,
+                feedback: brideFeedback,
+                setFeedback: setBrideFeedback
+              });
+            }
+            if (showGroom) {
+              activeAlbums.push({
+                type: 'groom' as const,
+                label: 'Groom Album Design',
+                data: groomAlbum,
+                formOpen: groomFormOpen,
+                setFormOpen: setGroomFormOpen,
+                feedback: groomFeedback,
+                setFeedback: setGroomFeedback
+              });
+            }
+
+            if (activeAlbums.length === 0) {
+              return (
+                <div className="py-8 text-center bg-black/20 border border-dashed border-gray-950 rounded-lg">
+                  <Typography variant="body2" className="text-gray-500 font-medium text-xs sm:text-sm">
+                    Album Design is not available yet.
                   </Typography>
                 </div>
+              );
+            }
 
-                <div className="space-y-1">
-                  <Typography variant="caption" className="text-gray-500 uppercase tracking-widest text-[9px] block">
-                    Album Status
-                  </Typography>
-                  <Chip
-                    label={booking.albumDesignStatus === 'Approved' ? 'Album Approved' : (booking.albumDesignStatus || 'Waiting for Client Review')}
-                    size="small"
-                    className={`text-[9px] h-5 font-bold uppercase tracking-wider ${
-                      booking.albumDesignStatus === 'Album Approved' || booking.albumDesignStatus === 'Approved' ? 'bg-green-500/15 text-green-400 border border-green-500/20' :
-                      booking.albumDesignStatus === 'Changes Requested' ? 'bg-red-500/15 text-red-400 border border-red-500/20' :
-                      booking.albumDesignStatus === 'Client Reviewing' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20' :
-                      booking.albumDesignStatus === 'Not Uploaded' ? 'bg-stone-500/15 text-stone-400 border border-stone-500/20' :
-                      'bg-amber-500/15 text-amber-400 border border-amber-500/20'
-                    }`}
-                  />
-                </div>
+            return (
+              <div className="space-y-6">
+                {activeAlbums.map((album) => {
+                  const hasPdf = !!album.data.pdfUrl;
+                  const isApproved = album.data.status === 'Approved' || album.data.status === 'Album Approved';
+
+                  return (
+                    <div key={album.type} className="p-4 bg-black/25 rounded-xl border border-gray-900/50 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-900">
+                        <div className="space-y-1">
+                          <Typography variant="body2" className="text-white font-serif font-bold text-sm tracking-wide">
+                            {album.label}
+                          </Typography>
+                          {hasPdf && (
+                            <Typography variant="caption" className="text-gray-500 text-[10px] block">
+                              Uploaded: {album.data.uploadDate || 'Unknown'}
+                            </Typography>
+                          )}
+                        </div>
+
+                        <Chip
+                          label={album.data.status === 'Approved' ? 'Approved' : (album.data.status || 'Waiting for Upload')}
+                          size="small"
+                          className={`text-[9px] h-5 font-bold uppercase tracking-wider ${
+                            isApproved ? 'bg-green-500/15 text-green-400 border border-green-500/20' :
+                            album.data.status === 'Changes Requested' ? 'bg-red-500/15 text-red-400 border border-red-500/20' :
+                            album.data.status === 'Client Reviewing' || album.data.status === 'Waiting for Client Review' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20' :
+                            'bg-stone-500/15 text-stone-400 border border-stone-500/20'
+                          }`}
+                        />
+                      </div>
+
+                      {hasPdf ? (
+                        <div className="space-y-4">
+                          {/* Admin Notes */}
+                          {album.data.notes && (
+                            <div className="bg-[#D4AF37]/5 p-3 rounded-lg border border-[#D4AF37]/10">
+                              <span className="text-[9px] text-[#D4AF37] uppercase tracking-widest font-mono block mb-1">Message from Studio</span>
+                              <p className="text-xs text-gray-300 leading-relaxed">{album.data.notes}</p>
+                            </div>
+                          )}
+
+                          {/* Client Feedback Status */}
+                          {album.data.status === 'Changes Requested' && album.data.comments && (
+                            <div className="bg-red-500/5 p-3 rounded-lg border border-red-500/10">
+                              <span className="text-[9px] text-red-400 uppercase tracking-widest font-mono block mb-1">Your Change Request Details</span>
+                              <p className="text-xs text-gray-300 leading-relaxed">{album.data.comments}</p>
+                            </div>
+                          )}
+
+                          {/* Action Buttons: Preview, Download, Approve, Request Changes */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <Button
+                              variant="outlined"
+                              onClick={() => {
+                                setPreviewUrl(album.data.pdfUrl);
+                                setPreviewTitle(`${album.label}: ${booking.clientName}`);
+                                setViewOpen(true);
+                              }}
+                              className="border-[#D4AF37]/20 text-white font-bold text-xs bg-black/25 hover:bg-[#D4AF37]/10 rounded-lg h-9"
+                              sx={{ textTransform: 'none' }}
+                            >
+                              👁️ View PDF
+                            </Button>
+
+                            <Button
+                              variant="outlined"
+                              onClick={() => window.open(album.data.pdfUrl, '_blank')}
+                              className="border-[#D4AF37]/20 text-white font-bold text-xs bg-black/25 hover:bg-[#D4AF37]/10 rounded-lg h-9"
+                              sx={{ textTransform: 'none' }}
+                            >
+                              📥 Download PDF
+                            </Button>
+
+                            <Button
+                              variant="outlined"
+                              disabled={isApproved}
+                              onClick={() => handleApproveAlbum(album.type)}
+                              className={`font-bold text-xs rounded-lg h-9 ${
+                                isApproved 
+                                  ? 'border-transparent bg-green-500/10 text-green-400 cursor-default' 
+                                  : 'border-green-500/20 text-white bg-green-500/5 hover:bg-green-500/15'
+                              }`}
+                              sx={{ textTransform: 'none' }}
+                            >
+                              {isApproved ? '✓ Approved' : '✓ Approve'}
+                            </Button>
+
+                            <Button
+                              variant="outlined"
+                              disabled={isApproved}
+                              onClick={() => album.setFormOpen(!album.formOpen)}
+                              className={`font-bold text-xs rounded-lg h-9 ${
+                                isApproved 
+                                  ? 'border-transparent bg-stone-500/5 text-stone-600' 
+                                  : 'border-red-500/20 text-white bg-red-500/5 hover:bg-red-500/15'
+                              }`}
+                              sx={{ textTransform: 'none' }}
+                            >
+                              ⚠ Request Changes
+                            </Button>
+                          </div>
+
+                          {/* Version History */}
+                          {album.data.versionHistory && album.data.versionHistory.length > 0 && (
+                            <div className="bg-black/15 p-3 rounded-lg border border-gray-900/50 space-y-1.5">
+                              <span className="text-[9px] text-gray-500 uppercase tracking-widest font-mono block">Previous Revisions</span>
+                              {album.data.versionHistory.map((history: any, idx: number) => (
+                                <div key={idx} className="flex items-center justify-between text-xs text-gray-400">
+                                  <span>Version {idx + 1} ({history.uploadDate})</span>
+                                  <a href={history.pdfUrl} target="_blank" rel="noreferrer" className="text-[#D4AF37] hover:underline">
+                                    Download v{idx + 1}
+                                  </a>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Request Changes Textbox Form */}
+                          {album.formOpen && !isApproved && (
+                            <div className="bg-black/40 p-4 rounded-lg border border-red-500/10 space-y-3">
+                              <Typography variant="body2" className="text-white font-bold text-xs">
+                                Submit Change Request Comments
+                              </Typography>
+                              <TextField
+                                fullWidth
+                                multiline
+                                rows={3}
+                                placeholder="Describe precisely which changes or corrections you would like us to make in this revision..."
+                                value={album.feedback}
+                                onChange={(e) => album.setFeedback(e.target.value)}
+                                className="bg-black/60 font-sans text-xs rounded-lg text-white"
+                                sx={{
+                                  '& .MuiInputBase-root': { color: 'white', fontSize: '12px' },
+                                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(212,175,55,0.15)' },
+                                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(212,175,55,0.3)' },
+                                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#D4AF37' }
+                                }}
+                              />
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  size="small"
+                                  onClick={() => album.setFormOpen(false)}
+                                  className="text-gray-400 text-xs hover:bg-white/5"
+                                  sx={{ textTransform: 'none' }}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  onClick={() => handleSubmitFeedback(album.type)}
+                                  className="bg-[#D4AF37] text-black font-bold text-xs px-4 rounded hover:bg-[#b8952d]"
+                                  sx={{ textTransform: 'none' }}
+                                >
+                                  Submit Feedback
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="py-6 text-center bg-black/10 border border-dashed border-gray-900 rounded-xl space-y-1">
+                          <Typography variant="body2" className="text-gray-500 font-medium text-xs">
+                            This design PDF is not available yet.
+                          </Typography>
+                          <Typography variant="caption" className="text-gray-600 block text-[10px]">
+                            Our design team is carefully handcrafting this layout. You'll see it here once uploaded!
+                          </Typography>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-
-              {booking.albumDesignNotes && (
-                <Box className="bg-black/35 p-3.5 rounded-lg border border-red-500/10">
-                  <Typography variant="caption" className="text-red-400 font-bold uppercase tracking-widest text-[9px] block mb-1">
-                    Your Change Request Notes
-                  </Typography>
-                  <Typography variant="body2" className="text-gray-300 text-xs leading-relaxed">
-                    {booking.albumDesignNotes}
-                  </Typography>
-                </Box>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  onClick={() => setViewOpen(true)}
-                  startIcon={<BookOpen className="w-4 h-4" />}
-                  className="border-[#D4AF37]/20 text-white font-bold text-xs py-2.5 bg-black/25 hover:bg-[#D4AF37]/10 rounded-lg h-10"
-                  sx={{ textTransform: 'none' }}
-                >
-                  📖 View Album
-                </Button>
-
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  onClick={() => {
-                    if (booking.albumDesignPdfUrl) {
-                      window.open(booking.albumDesignPdfUrl, '_blank');
-                    }
-                  }}
-                  startIcon={<Download className="w-4 h-4" />}
-                  className="border-[#D4AF37]/20 text-white font-bold text-xs py-2.5 bg-black/25 hover:bg-[#D4AF37]/10 rounded-lg h-10"
-                  sx={{ textTransform: 'none' }}
-                >
-                  📥 Download Album
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="py-8 text-center bg-black/20 border border-dashed border-gray-950 rounded-lg">
-              <Typography variant="body2" className="text-gray-500 font-medium text-xs sm:text-sm">
-                Album Design is not available yet.
-              </Typography>
-              <Typography variant="caption" className="text-gray-600 block mt-1">
-                Our design team is carefully handcrafting your layout. You'll receive real-time sync notification here when it's ready.
-              </Typography>
-            </div>
-          )}
+            );
+          })()}
         </Box>
 
         {/* Wedding Event Details Card */}
@@ -1195,16 +1420,33 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ bookingId })
         <PDFPreviewDialog
           open={viewOpen}
           onClose={() => setViewOpen(false)}
-          pdfUrl={booking.albumDesignPdfUrl || null}
-          title={`Album Design: ${booking.clientName}`}
+          pdfUrl={previewUrl}
+          title={previewTitle || `Album Design: ${booking.clientName}`}
           filename={`Album_Design_${booking.clientName.replace(/\s+/g, '_')}.pdf`}
           onDownload={() => {
-            if (booking.albumDesignPdfUrl) {
-              window.open(booking.albumDesignPdfUrl, '_blank');
+            if (previewUrl) {
+              window.open(previewUrl, '_blank');
             }
           }}
         />
       )}
+
+      {/* SNACKBAR NOTIFICATION FOR STATUS UPDATES */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={4000}
+        onClose={() => setSnackbarOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setSnackbarOpen(false)} 
+          severity={snackbarSeverity} 
+          variant="filled" 
+          sx={{ width: '100%', fontSize: '12px' }}
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
 
       {/* Agreement Document Preview Dialog */}
       {booking && (

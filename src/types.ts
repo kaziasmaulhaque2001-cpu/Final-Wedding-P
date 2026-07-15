@@ -55,6 +55,9 @@ export interface Booking {
   albumDesignUploadDate?: string;
   albumDesignNotes?: string;
 
+  brideAlbum?: AlbumDesignData;
+  groomAlbum?: AlbumDesignData;
+
   // Simplified Form Custom Fields
   contactPerson?: string;
   alternatePhone?: string;
@@ -135,4 +138,13 @@ export interface SyncState {
   lastSyncedAt: number | null;
   isSyncing?: boolean;
   syncVersion?: number;
+}
+
+export interface AlbumDesignData {
+  pdfUrl?: string;
+  status?: 'Not Uploaded' | 'Waiting for Upload' | 'Waiting for Client Review' | 'Client Reviewing' | 'Changes Requested' | 'Approved';
+  uploadDate?: string;
+  notes?: string;
+  comments?: string;
+  versionHistory?: Array<{ pdfUrl: string; uploadDate: string; notes?: string }>;
 }

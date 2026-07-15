@@ -1,4 +1,4 @@
-import { Booking } from '../types';
+import { Booking, AlbumDesignData } from '../types';
 
 export const getStatusLabel = (status: Booking['status'] | string): string => {
   switch (status) {
@@ -76,3 +76,54 @@ export const getStatusTextColor = (status: Booking['status'] | string): string =
       return 'text-[#9CA3AF]';
   }
 };
+
+export function getBookingAlbums(booking: Booking): {
+  showBride: boolean;
+  showGroom: boolean;
+  brideAlbum: AlbumDesignData;
+  groomAlbum: AlbumDesignData;
+} {
+  const pkgName = (booking.packageName || '').toLowerCase();
+  const packageHas2Albums = pkgName.includes('royal') || pkgName.includes('two') || pkgName.includes('2 album') || pkgName.includes('2-album') || pkgName.includes('two album');
+
+  const coverage = (booking.coverage || 'Both Side').toLowerCase();
+  const isBothSide = coverage.includes('both') || (!coverage.includes('bride') && !coverage.includes('groom'));
+  const isGroomOnly = coverage.includes('groom') || coverage.includes('groom side') || coverage.includes('groom only');
+  const isBrideOnly = coverage.includes('bride') || coverage.includes('bride side') || coverage.includes('bride only');
+
+  const showBride = packageHas2Albums || isBothSide || isBrideOnly;
+  const showGroom = packageHas2Albums || isBothSide || isGroomOnly;
+
+  // Retrieve Bride Album Data with thorough fallback
+  const rawBrideStatus = booking.brideAlbum?.status || (!isGroomOnly ? (booking.albumDesignStatus || 'Not Uploaded') : 'Not Uploaded');
+  const resolvedBrideStatus = (rawBrideStatus === 'Album Approved' ? 'Approved' : rawBrideStatus) as any;
+
+  const brideAlbum: AlbumDesignData = {
+    pdfUrl: booking.brideAlbum?.pdfUrl || (!isGroomOnly ? booking.albumDesignPdfUrl : undefined),
+    status: resolvedBrideStatus,
+    uploadDate: booking.brideAlbum?.uploadDate || (!isGroomOnly ? booking.albumDesignUploadDate : undefined),
+    notes: booking.brideAlbum?.notes || (!isGroomOnly ? booking.albumDesignNotes : undefined),
+    comments: booking.brideAlbum?.comments || '',
+    versionHistory: booking.brideAlbum?.versionHistory || []
+  };
+
+  // Retrieve Groom Album Data with thorough fallback
+  const rawGroomStatus = booking.groomAlbum?.status || (isGroomOnly ? (booking.albumDesignStatus || 'Not Uploaded') : 'Not Uploaded');
+  const resolvedGroomStatus = (rawGroomStatus === 'Album Approved' ? 'Approved' : rawGroomStatus) as any;
+
+  const groomAlbum: AlbumDesignData = {
+    pdfUrl: booking.groomAlbum?.pdfUrl || (isGroomOnly ? booking.albumDesignPdfUrl : undefined),
+    status: resolvedGroomStatus,
+    uploadDate: booking.groomAlbum?.uploadDate || (isGroomOnly ? booking.albumDesignUploadDate : undefined),
+    notes: booking.groomAlbum?.notes || (isGroomOnly ? booking.albumDesignNotes : undefined),
+    comments: booking.groomAlbum?.comments || '',
+    versionHistory: booking.groomAlbum?.versionHistory || []
+  };
+
+  return {
+    showBride,
+    showGroom,
+    brideAlbum,
+    groomAlbum
+  };
+}

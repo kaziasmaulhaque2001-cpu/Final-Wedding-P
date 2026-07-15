@@ -5,6 +5,17 @@ import { createServer as createViteServer } from "vite";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { GoogleGenAI } from "@google/genai";
+
+// Initialize Gemini SDK with telemetry User-Agent
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: {
+    headers: {
+      "User-Agent": "aistudio-build",
+    },
+  },
+});
 
 // Read Firebase Config
 const configPath = path.join(process.cwd(), "firebase-applet-config.json");
@@ -422,7 +433,11 @@ async function processTelegramRemindersAndSummaries(db: any) {
       }
     }
   } catch (error: any) {
-    console.error("Error running processTelegramRemindersAndSummaries:", error);
+    if (error?.message?.includes("PERMISSION_DENIED") || error?.message?.includes("permissions")) {
+      console.warn("[Firebase Scheduler] Background reminders bypassed on server due to sandbox permission restrictions.");
+    } else {
+      console.error("Error running processTelegramRemindersAndSummaries:", error);
+    }
   }
 }
 
@@ -465,6 +480,44 @@ async function startServer() {
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // Gemini Chat endpoint
+  app.post("/api/gemini/chat", authenticateUser, async (req: any, res) => {
+    const { contents, systemInstruction } = req.body;
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction || "You are the Cinematic AI Copilot for Asmaul Production, a professional photography and videography studio management platform. Assist users with managing client bookings, payment tracking, photo album workflows, and crafting stunning client experiences. Keep answers highly professional, clean, and helpful."
+        }
+      });
+      res.json({ text: response.text });
+    } catch (error: any) {
+      console.error("Error in Gemini chat:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Gemini Content Intelligence analyzer endpoint
+  app.post("/api/gemini/analyze", authenticateUser, async (req: any, res) => {
+    const { prompt, context } = req.body;
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: [
+          { role: "user", parts: [{ text: `Context Details:\n${JSON.stringify(context)}\n\nAction / Prompt Request:\n${prompt}` }] }
+        ],
+        config: {
+          systemInstruction: "You are the Cinematic AI Copilot for Asmaul Production. Analyze the provided context meticulously, suggest enhancements or drafts, write professional customer emails, create Telegram templates, and provide concise, elegant output."
+        }
+      });
+      res.json({ text: response.text });
+    } catch (error: any) {
+      console.error("Error in Gemini analysis:", error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Get Telegram Secure Config (checks if token is set, but masks it)
@@ -726,13 +779,21 @@ async function startServer() {
     // Start automated background Telegram scheduler
     console.log("Starting automated background Telegram scheduler...");
     processTelegramRemindersAndSummaries(firestoreDb).catch(err => {
-      console.error("Failed to execute initial Telegram scheduler run:", err);
+      if (err?.message?.includes("PERMISSION_DENIED") || err?.message?.includes("permissions")) {
+        console.warn("[Firebase Scheduler] Initial run bypassed due to permissions.");
+      } else {
+        console.error("Failed to execute initial Telegram scheduler run:", err);
+      }
     });
 
     setInterval(() => {
       console.log("Running background Telegram scheduler job...");
       processTelegramRemindersAndSummaries(firestoreDb).catch(err => {
-        console.error("Failed in background Telegram scheduler run:", err);
+        if (err?.message?.includes("PERMISSION_DENIED") || err?.message?.includes("permissions")) {
+          console.warn("[Firebase Scheduler] Periodic run bypassed due to permissions.");
+        } else {
+          console.error("Failed in background Telegram scheduler run:", err);
+        }
       });
     }, 15 * 60 * 1000); // Check every 15 minutes to guarantee timely morning 8:00 AM summaries and reminders
   });
