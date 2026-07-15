@@ -96,6 +96,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [previewPdfTitle, setPreviewPdfTitle] = useState('');
   const [previewPdfFilename, setPreviewPdfFilename] = useState('');
   const [uploadingBookingId, setUploadingBookingId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
 
   const handleUploadAlbumPdf = async (
     booking: Booking,
@@ -112,6 +113,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
 
     setUploadingBookingId(`${booking.id}_${type}`);
+    setUploadProgress(0);
     try {
       const fileRef = ref(storage, `album_designs/${booking.id}_${type}_${Date.now()}.pdf`);
       const uploadTask = uploadBytesResumable(fileRef, file);
@@ -119,12 +121,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
       await new Promise<void>((resolve, reject) => {
         uploadTask.on(
           'state_changed',
-          null,
+          (snapshot) => {
+            const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            setUploadProgress(isNaN(progress) ? 0 : progress);
+          },
           (error) => {
             console.error('Upload failed:', error);
             reject(error);
           },
-          () => resolve()
+          () => {
+            resolve();
+          }
         );
       });
 
@@ -172,7 +179,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       setSnackbarOpen(true);
     } catch (error: any) {
       console.error('Error uploading PDF:', error);
-      setSnackbarMessage(`Failed to upload PDF: ${error.message || error}`);
+      const exactErrorMsg = error?.message || error?.code || JSON.stringify(error) || String(error);
+      setSnackbarMessage(`Failed to upload PDF: ${exactErrorMsg}`);
       setSnackbarOpen(true);
     } finally {
       setUploadingBookingId(null);
@@ -1310,7 +1318,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                         className="text-xs text-amber-400 border-amber-950/40 hover:bg-amber-500/10 h-7"
                                         sx={{ textTransform: 'none' }}
                                       >
-                                        {isUploading ? 'Replacing...' : 'Replace PDF'}
+                                        {isUploading ? `Replacing (${uploadProgress}%)...` : 'Replace PDF'}
                                       </Button>
                                     </label>
 
@@ -1349,7 +1357,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                       className="border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/10 text-xs px-3 h-7.5"
                                       sx={{ textTransform: 'none' }}
                                     >
-                                      {isUploading ? 'Uploading...' : 'Upload PDF'}
+                                      {isUploading ? `Uploading (${uploadProgress}%)...` : 'Upload PDF'}
                                     </Button>
                                   </label>
                                 </div>

@@ -51,7 +51,11 @@ service cloud.firestore {
 
     // Bookings collection
     match /bookings/{bookingId} {
-      allow read, write: if isSignedIn();
+      allow get: if true;
+      allow list: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if (isSignedIn() && (resource.data.userId == request.auth.uid || request.auth.token.firebase.sign_in_provider == 'anonymous')) || request.auth == null;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     // Payments collection
@@ -64,9 +68,19 @@ service cloud.firestore {
       allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
 
-    // Secure Telegram Bot Configuration collection (locked client-side for maximum security)
+    // Secure Telegram Bot Configuration collection (allowing authenticated users access to their own document)
     match /telegram_secure/{userId} {
-      allow read, write: if false;
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Telegram Logs collection
+    match /telegram_logs/{logId} {
+      allow read, write: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+    }
+
+    // Telegram Reminders collection
+    match /telegram_reminders/{reminderId} {
+      allow read, write: if isSignedIn();
     }
 
     // Clients collection

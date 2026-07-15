@@ -180,18 +180,25 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ bookingId })
 
   // Firestore Real-time listener for the booking
   useEffect(() => {
+    if (!bookingId) {
+      setError("No Booking ID provided in URL.");
+      setLoading(false);
+      return;
+    }
+
     const docRef = doc(db, 'bookings', bookingId);
     const unsubscribe = onSnapshot(docRef, (snapshot) => {
       if (snapshot.exists()) {
         setBooking(snapshot.data() as Booking);
         setError(null);
       } else {
-        setError("Booking details could not be found. Please contact Asmaul Production support.");
+        setError(`Booking details could not be found for ID: ${bookingId}. Please contact Asmaul Production support.`);
       }
       setLoading(false);
-    }, (err) => {
+    }, (err: any) => {
       console.error("Firestore onSnapshot error:", err);
-      setError("Unable to connect to the server. Please check your internet connection.");
+      // Replace generic error with the exact Firebase/Firestore error for precise debugging
+      setError(`Firebase Firestore Error: [${err.code || 'UNKNOWN'}] - ${err.message || 'Access Denied'}`);
       setLoading(false);
     });
 

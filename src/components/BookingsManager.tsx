@@ -2394,7 +2394,7 @@ Thank you for choosing Asmaul Production.`;
                     </Typography>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <TextField
                       select
                       fullWidth
@@ -2439,6 +2439,19 @@ Thank you for choosing Asmaul Production.`;
                       <MenuItem value="in_progress">In Progress</MenuItem>
                       <MenuItem value="completed">Completed</MenuItem>
                       <MenuItem value="cancelled">Cancelled</MenuItem>
+                    </TextField>
+
+                    <TextField
+                      select
+                      fullWidth
+                      label="Coverage"
+                      value={coverage}
+                      onChange={(e) => setCoverage(e.target.value)}
+                      className="bg-black/25 font-bold"
+                    >
+                      <MenuItem value="Both Side">Both Side</MenuItem>
+                      <MenuItem value="Bride">Bride Only</MenuItem>
+                      <MenuItem value="Groom">Groom Only</MenuItem>
                     </TextField>
                   </div>
 

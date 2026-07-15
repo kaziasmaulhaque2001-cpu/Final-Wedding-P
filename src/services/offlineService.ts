@@ -62,6 +62,26 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+function sanitizeObject<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeObject) as unknown as T;
+  }
+  if (typeof obj === 'object') {
+    const newObj: any = {};
+    for (const key of Object.keys(obj)) {
+      const val = (obj as any)[key];
+      if (val !== undefined) {
+        newObj[key] = sanitizeObject(val);
+      }
+    }
+    return newObj;
+  }
+  return obj;
+}
+
 const DB_NAME = 'asmaul_production_db';
 const DB_VERSION = 1;
 
@@ -410,10 +430,12 @@ class OfflineService {
     booking.createdAt = booking.createdAt || Date.now();
     booking.updatedAt = Date.now();
 
+    const sanitizedBooking = sanitizeObject(booking);
+
     if (this.getOnlineStatus() && !this.isDemoUser()) {
       try {
-        await setDoc(doc(db, 'bookings', booking.id), booking);
-        await this.saveToStore('bookings', booking);
+        await setDoc(doc(db, 'bookings', sanitizedBooking.id), sanitizedBooking);
+        await this.saveToStore('bookings', sanitizedBooking);
         this.notifyListeners();
       } catch (error: any) {
         if (error?.code === 'permission-denied' || error?.message?.includes('permission')) {
@@ -423,14 +445,14 @@ class OfflineService {
         throw error;
       }
     } else {
-      await this.saveToStore('bookings', booking);
-      await this.queueOperation('bookings', 'create', booking);
+      await this.saveToStore('bookings', sanitizedBooking);
+      await this.queueOperation('bookings', 'create', sanitizedBooking);
       this.notifyListeners();
     }
 
     // Trigger Telegram notification
     try {
-      sendTelegramNotification('New Booking', booking);
+      sendTelegramNotification('New Booking', sanitizedBooking);
     } catch (e) {
       console.error('Error sending telegram notification for addBooking:', e);
     }
@@ -454,10 +476,12 @@ class OfflineService {
     booking.userId = userId;
     booking.updatedAt = Date.now();
 
+    const sanitizedBooking = sanitizeObject(booking);
+
     if (this.getOnlineStatus() && !this.isDemoUser()) {
       try {
-        await setDoc(doc(db, 'bookings', booking.id), booking);
-        await this.saveToStore('bookings', booking);
+        await setDoc(doc(db, 'bookings', sanitizedBooking.id), sanitizedBooking);
+        await this.saveToStore('bookings', sanitizedBooking);
         this.notifyListeners();
       } catch (error: any) {
         if (error?.code === 'permission-denied' || error?.message?.includes('permission')) {
@@ -467,35 +491,35 @@ class OfflineService {
         throw error;
       }
     } else {
-      await this.saveToStore('bookings', booking);
-      await this.queueOperation('bookings', 'update', booking);
+      await this.saveToStore('bookings', sanitizedBooking);
+      await this.queueOperation('bookings', 'update', sanitizedBooking);
       this.notifyListeners();
     }
 
     // Trigger Telegram Notifications
     if (prevBooking) {
       try {
-        if (booking.status === 'cancelled' && prevBooking.status !== 'cancelled') {
-          sendTelegramNotification('Booking Cancelled', booking);
-        } else if (booking.status === 'completed' && prevBooking.status !== 'completed') {
-          sendTelegramNotification('Project Completed', booking);
-        } else if (booking.status === 'in_progress' && prevBooking.status !== 'in_progress') {
-          sendTelegramNotification('Gallery Uploaded', booking);
+        if (sanitizedBooking.status === 'cancelled' && prevBooking.status !== 'cancelled') {
+          sendTelegramNotification('Booking Cancelled', sanitizedBooking);
+        } else if (sanitizedBooking.status === 'completed' && prevBooking.status !== 'completed') {
+          sendTelegramNotification('Project Completed', sanitizedBooking);
+        } else if (sanitizedBooking.status === 'in_progress' && prevBooking.status !== 'in_progress') {
+          sendTelegramNotification('Gallery Uploaded', sanitizedBooking);
         } else if (
-          (booking.albumDesignStatus === 'Album Approved' || booking.albumDesignStatus === 'Approved') &&
+          (sanitizedBooking.albumDesignStatus === 'Album Approved' || sanitizedBooking.albumDesignStatus === 'Approved') &&
           prevBooking.albumDesignStatus !== 'Album Approved' &&
           prevBooking.albumDesignStatus !== 'Approved'
         ) {
-          sendTelegramNotification('Album Approved', booking);
-        } else if (booking.albumDesignStatus === 'Changes Requested' && prevBooking.albumDesignStatus !== 'Changes Requested') {
-          sendTelegramNotification('Album Changes Requested', booking);
-        } else if (booking.albumDesignPdfUrl && !prevBooking.albumDesignPdfUrl) {
-          sendTelegramNotification('Album Design PDF Uploaded', booking);
+          sendTelegramNotification('Album Approved', sanitizedBooking);
+        } else if (sanitizedBooking.albumDesignStatus === 'Changes Requested' && prevBooking.albumDesignStatus !== 'Changes Requested') {
+          sendTelegramNotification('Album Changes Requested', sanitizedBooking);
+        } else if (sanitizedBooking.albumDesignPdfUrl && !prevBooking.albumDesignPdfUrl) {
+          sendTelegramNotification('Album Design PDF Uploaded', sanitizedBooking);
         } else if (
-          (booking.albumDeliveryStatus === 'Delivered' && prevBooking.albumDeliveryStatus !== 'Delivered') ||
-          (booking.videoDeliveryStatus === 'Delivered' && prevBooking.videoDeliveryStatus !== 'Delivered')
+          (sanitizedBooking.albumDeliveryStatus === 'Delivered' && prevBooking.albumDeliveryStatus !== 'Delivered') ||
+          (sanitizedBooking.videoDeliveryStatus === 'Delivered' && prevBooking.videoDeliveryStatus !== 'Delivered')
         ) {
-          sendTelegramNotification('Project Delivered', booking);
+          sendTelegramNotification('Project Delivered', sanitizedBooking);
         } else {
           // Send a general update if fields like date or venue or total price change
           const hasDateChanged = booking.weddingDate !== prevBooking.weddingDate;
@@ -705,17 +729,19 @@ class OfflineService {
       const sum = bookingPayments.reduce((total, p) => total + p.amount, 0);
       booking.paidAmount = sum;
       booking.updatedAt = Date.now();
-      await this.saveToStore('bookings', booking);
+
+      const sanitizedBooking = sanitizeObject(booking);
+      await this.saveToStore('bookings', sanitizedBooking);
       
       // Sync booking update to Firestore/queue
       if (this.getOnlineStatus() && auth.currentUser && !this.isDemoUser()) {
         try {
-          await setDoc(doc(db, 'bookings', bookingId), booking);
+          await setDoc(doc(db, 'bookings', bookingId), sanitizedBooking);
         } catch {
-          await this.queueOperation('bookings', 'update', booking);
+          await this.queueOperation('bookings', 'update', sanitizedBooking);
         }
       } else {
-        await this.queueOperation('bookings', 'update', booking);
+        await this.queueOperation('bookings', 'update', sanitizedBooking);
       }
     }
   }
@@ -1001,9 +1027,9 @@ class OfflineService {
                 op.data.updatedAt = Date.now();
                 if (auth.currentUser) {
                   op.data.userId = auth.currentUser.uid;
-                  await this.saveToStore('bookings', op.data);
+                  await this.saveToStore('bookings', sanitizeObject(op.data));
                 }
-                await setDoc(doc(db, 'bookings', op.data.id), op.data);
+                await setDoc(doc(db, 'bookings', op.data.id), sanitizeObject(op.data));
               }
             } else if (op.collection === 'payments') {
               if (op.type === 'delete') {
@@ -1014,17 +1040,17 @@ class OfflineService {
                 op.data.updatedAt = Date.now();
                 if (auth.currentUser) {
                   op.data.userId = auth.currentUser.uid;
-                  await this.saveToStore('payments', op.data);
+                  await this.saveToStore('payments', sanitizeObject(op.data));
                 }
-                await setDoc(doc(db, 'payments', op.data.id), op.data);
+                await setDoc(doc(db, 'payments', op.data.id), sanitizeObject(op.data));
               }
             } else if (op.collection === 'settings') {
               if (auth.currentUser) {
                 const settingsData = op.data;
                 settingsData.userId = auth.currentUser.uid;
                 settingsData.updatedAt = Date.now();
-                await this.setMetadata('brand_settings', settingsData);
-                await setDoc(doc(db, 'settings', auth.currentUser.uid), settingsData);
+                await this.setMetadata('brand_settings', sanitizeObject(settingsData));
+                await setDoc(doc(db, 'settings', auth.currentUser.uid), sanitizeObject(settingsData));
               }
             }
             // Clear successfully synced outbox operation

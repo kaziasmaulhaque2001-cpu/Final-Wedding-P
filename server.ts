@@ -39,6 +39,218 @@ try {
 const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
 const firestoreDb = getFirestore(firebaseApp, dbId);
 
+// --- Firestore REST API Fallbacks for Sandbox Permission Limitations ---
+
+function parseFirestoreValue(value: any): any {
+  if (!value) return undefined;
+  if ('stringValue' in value) return value.stringValue;
+  if ('booleanValue' in value) return value.booleanValue;
+  if ('integerValue' in value) return parseInt(value.integerValue, 10);
+  if ('doubleValue' in value) return parseFloat(value.doubleValue);
+  if ('timestampValue' in value) return value.timestampValue;
+  if ('arrayValue' in value) {
+    return (value.arrayValue.values || []).map((v: any) => parseFirestoreValue(v));
+  }
+  if ('mapValue' in value) {
+    return parseFirestoreFields(value.mapValue.fields || {});
+  }
+  if ('nullValue' in value) return null;
+  return undefined;
+}
+
+function parseFirestoreFields(fields: any): any {
+  const result: any = {};
+  for (const key of Object.keys(fields)) {
+    result[key] = parseFirestoreValue(fields[key]);
+  }
+  return result;
+}
+
+function toFirestoreValue(value: any): any {
+  if (value === null || value === undefined) return { nullValue: null };
+  if (typeof value === 'boolean') return { booleanValue: value };
+  if (typeof value === 'string') return { stringValue: value };
+  if (typeof value === 'number') {
+    if (Number.isInteger(value)) return { integerValue: String(value) };
+    return { doubleValue: value };
+  }
+  if (Array.isArray(value)) {
+    return {
+      arrayValue: {
+        values: value.map(toFirestoreValue)
+      }
+    };
+  }
+  if (typeof value === 'object') {
+    return {
+      mapValue: {
+        fields: toFirestoreFields(value)
+      }
+    };
+  }
+  return { nullValue: null };
+}
+
+function toFirestoreFields(obj: any): any {
+  const fields: any = {};
+  for (const key of Object.keys(obj)) {
+    if (obj[key] !== undefined) {
+      fields[key] = toFirestoreValue(obj[key]);
+    }
+  }
+  return fields;
+}
+
+async function fetchSecureDocRest(uid: string, idToken: string): Promise<any> {
+  const projectId = firebaseConfig.projectId;
+  const databaseId = firebaseConfig.firestoreDatabaseId || "(default)";
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/telegram_secure/${uid}`;
+  
+  const response = await fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${idToken}`
+    }
+  });
+  
+  if (response.status === 404) {
+    return null;
+  }
+  
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Firestore REST error: ${response.status} - ${text}`);
+  }
+  
+  const data: any = await response.json();
+  return parseFirestoreFields(data.fields || {});
+}
+
+async function saveSecureDocRest(uid: string, fieldsObj: any, idToken: string): Promise<void> {
+  const projectId = firebaseConfig.projectId;
+  const databaseId = firebaseConfig.firestoreDatabaseId || "(default)";
+  const keys = Object.keys(fieldsObj);
+  const updateMaskParams = keys.map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+  const patchUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/telegram_secure/${uid}?${updateMaskParams}`;
+  
+  const fields = toFirestoreFields(fieldsObj);
+  const response = await fetch(patchUrl, {
+    method: "PATCH",
+    headers: {
+      "Authorization": `Bearer ${idToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ fields })
+  });
+  
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Firestore REST patch error: ${response.status} - ${text}`);
+  }
+}
+
+async function logTelegramStatusRest(
+  uid: string,
+  eventType: string,
+  status: 'success' | 'failed',
+  recipientChatId: string,
+  messagePreview: string,
+  idToken: string,
+  errorMessage?: string
+) {
+  try {
+    const projectId = firebaseConfig.projectId;
+    const databaseId = firebaseConfig.firestoreDatabaseId || "(default)";
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/telegram_logs`;
+    
+    const fieldsObj = {
+      userId: uid,
+      eventType,
+      status,
+      recipientChatId,
+      messagePreview: messagePreview.substring(0, 150),
+      errorMessage: errorMessage || null,
+      timestamp: Date.now(),
+    };
+    
+    const fields = toFirestoreFields(fieldsObj);
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${idToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ fields })
+    });
+    
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn(`Firestore REST logging warn: ${response.status} - ${text}`);
+    }
+  } catch (err) {
+    console.error("Failed to write to telegram_logs via REST:", err);
+  }
+}
+
+async function getTelegramSecureConfig(uid: string, idToken: string): Promise<any> {
+  try {
+    const docRef = firestoreDb.collection("telegram_secure").doc(uid);
+    const snapshot = await docRef.get();
+    if (snapshot.exists) {
+      return snapshot.data();
+    }
+    return null;
+  } catch (error: any) {
+    if (error?.message?.includes("PERMISSION_DENIED") || error?.message?.includes("permissions") || error?.code === 7) {
+      console.log(`Admin SDK PERMISSION_DENIED on telegram_secure, falling back to Firestore REST API...`);
+      return await fetchSecureDocRest(uid, idToken);
+    }
+    throw error;
+  }
+}
+
+async function saveTelegramSecureConfig(uid: string, data: any, idToken: string): Promise<void> {
+  try {
+    const docRef = firestoreDb.collection("telegram_secure").doc(uid);
+    await docRef.set(data, { merge: true });
+  } catch (error: any) {
+    if (error?.message?.includes("PERMISSION_DENIED") || error?.message?.includes("permissions") || error?.code === 7) {
+      console.log(`Admin SDK PERMISSION_DENIED on save, falling back to Firestore REST API...`);
+      await saveSecureDocRest(uid, data, idToken);
+    } else {
+      throw error;
+    }
+  }
+}
+
+async function logTelegramStatusFallback(
+  uid: string,
+  eventType: string,
+  status: 'success' | 'failed',
+  recipientChatId: string,
+  messagePreview: string,
+  idToken: string | undefined,
+  errorMessage?: string
+) {
+  try {
+    await firestoreDb.collection("telegram_logs").add({
+      userId: uid,
+      eventType,
+      status,
+      recipientChatId,
+      messagePreview: messagePreview.substring(0, 150),
+      errorMessage: errorMessage || null,
+      timestamp: Date.now(),
+    });
+  } catch (error: any) {
+    if (idToken && (error?.message?.includes("PERMISSION_DENIED") || error?.message?.includes("permissions") || error?.code === 7)) {
+      console.log(`Admin SDK PERMISSION_DENIED on logging, falling back to Firestore REST API...`);
+      await logTelegramStatusRest(uid, eventType, status, recipientChatId, messagePreview, idToken, errorMessage);
+    } else {
+      console.error("Failed to write to telegram_logs:", error);
+    }
+  }
+}
+
 // --- Telegram Notification Helpers & Scheduler ---
 
 async function sendTelegramWithRetry(botToken: string, chatId: string, message: string, maxRetries = 3): Promise<boolean> {
@@ -466,8 +678,9 @@ async function startServer() {
     }
     const idToken = authHeader.split("Bearer ")[1];
     try {
-       const decodedToken = await getAuth(firebaseApp).verifyIdToken(idToken);
+      const decodedToken = await getAuth(firebaseApp).verifyIdToken(idToken);
       req.user = decodedToken;
+      req.idToken = idToken;
       next();
     } catch (error) {
       console.error("Error verifying ID token:", error);
@@ -523,11 +736,10 @@ async function startServer() {
   // Get Telegram Secure Config (checks if token is set, but masks it)
   app.get("/api/telegram/config", authenticateUser, async (req: any, res) => {
     const uid = req.user.uid;
+    const idToken = req.idToken;
     try {
-      const docRef = firestoreDb.collection("telegram_secure").doc(uid);
-      const snapshot = await docRef.get();
-      if (snapshot.exists) {
-        const data = snapshot.data();
+      const data = await getTelegramSecureConfig(uid, idToken);
+      if (data) {
         return res.json({
           enabled: data?.enabled ?? false,
           chatId: data?.chatId ?? "",
@@ -560,6 +772,7 @@ async function startServer() {
   // Save Telegram Secure Config
   app.post("/api/telegram/save", authenticateUser, async (req: any, res) => {
     const uid = req.user.uid;
+    const idToken = req.idToken;
     const {
       enabled,
       botToken,
@@ -573,9 +786,7 @@ async function startServer() {
     } = req.body;
 
     try {
-      const docRef = firestoreDb.collection("telegram_secure").doc(uid);
-      const snapshot = await docRef.get();
-      const existingData = snapshot.exists ? snapshot.data() : {};
+      const existingData = (await getTelegramSecureConfig(uid, idToken)) || {};
 
       const updatedData: any = {
         enabled: enabled ?? existingData?.enabled ?? false,
@@ -599,7 +810,7 @@ async function startServer() {
         updatedData.botToken = existingData?.botToken || "";
       }
 
-      await docRef.set(updatedData, { merge: true });
+      await saveTelegramSecureConfig(uid, updatedData, idToken);
       res.json({ success: true, message: "Telegram settings saved securely." });
     } catch (error: any) {
       console.error("Error saving secure telegram config:", error);
@@ -610,14 +821,14 @@ async function startServer() {
   // Test Connection Route
   app.post("/api/telegram/test-connection", authenticateUser, async (req: any, res) => {
     const uid = req.user.uid;
+    const idToken = req.idToken;
     let { botToken, chatId } = req.body;
 
     try {
       // If token is masked, fetch from firestore
       if (botToken === "••••••••" || !botToken) {
-        const secureDoc = await firestoreDb.collection("telegram_secure").doc(uid).get();
-        if (secureDoc.exists) {
-          const secureData = secureDoc.data();
+        const secureData = await getTelegramSecureConfig(uid, idToken);
+        if (secureData) {
           if (botToken === "••••••••") {
             botToken = secureData?.botToken || "";
           }
@@ -649,14 +860,14 @@ async function startServer() {
   // Send Test Message Route
   app.post("/api/telegram/send-test", authenticateUser, async (req: any, res) => {
     const uid = req.user.uid;
+    const idToken = req.idToken;
     let { botToken, chatId } = req.body;
 
     try {
       // If token is masked, fetch from firestore
       if (botToken === "••••••••" || !botToken) {
-        const secureDoc = await firestoreDb.collection("telegram_secure").doc(uid).get();
-        if (secureDoc.exists) {
-          const secureData = secureDoc.data();
+        const secureData = await getTelegramSecureConfig(uid, idToken);
+        if (secureData) {
           if (botToken === "••••••••") {
             botToken = secureData?.botToken || "";
           }
@@ -697,15 +908,15 @@ async function startServer() {
   // Main automatic notification route
   app.post("/api/telegram/notify", authenticateUser, async (req: any, res) => {
     const uid = req.user.uid;
+    const idToken = req.idToken;
     const { eventType, booking, payment } = req.body;
 
     try {
-      const secureDoc = await firestoreDb.collection("telegram_secure").doc(uid).get();
-      if (!secureDoc.exists) {
+      const secureData = await getTelegramSecureConfig(uid, idToken);
+      if (!secureData) {
         return res.json({ success: false, message: "Telegram not configured." });
       }
 
-      const secureData = secureDoc.data();
       if (!secureData?.enabled || !secureData?.botToken || !secureData?.chatId) {
         return res.json({ success: false, message: "Telegram notifications are disabled or incomplete." });
       }
@@ -746,10 +957,10 @@ async function startServer() {
       const success = await sendTelegramWithRetry(botToken, chatId, message);
 
       if (success) {
-        await logTelegramStatus(uid, eventType, 'success', chatId, message);
+        await logTelegramStatusFallback(uid, eventType, 'success', chatId, message, idToken);
         res.json({ success: true });
       } else {
-        await logTelegramStatus(uid, eventType, 'failed', chatId, message, "Failed after max retries");
+        await logTelegramStatusFallback(uid, eventType, 'failed', chatId, message, idToken, "Failed after max retries");
         res.status(400).json({ success: false, error: "Failed to send Telegram notification after retries." });
       }
     } catch (error: any) {

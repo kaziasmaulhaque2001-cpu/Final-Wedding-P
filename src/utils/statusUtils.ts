@@ -83,16 +83,17 @@ export function getBookingAlbums(booking: Booking): {
   brideAlbum: AlbumDesignData;
   groomAlbum: AlbumDesignData;
 } {
-  const pkgName = (booking.packageName || '').toLowerCase();
-  const packageHas2Albums = pkgName.includes('royal') || pkgName.includes('two') || pkgName.includes('2 album') || pkgName.includes('2-album') || pkgName.includes('two album');
-
   const coverage = (booking.coverage || 'Both Side').toLowerCase();
-  const isBothSide = coverage.includes('both') || (!coverage.includes('bride') && !coverage.includes('groom'));
-  const isGroomOnly = coverage.includes('groom') || coverage.includes('groom side') || coverage.includes('groom only');
-  const isBrideOnly = coverage.includes('bride') || coverage.includes('bride side') || coverage.includes('bride only');
+  
+  // Strict check: if it specifically mentions groom side/only, and doesn't contain bride/both
+  const isGroomOnly = coverage.includes('groom') && !coverage.includes('bride') && !coverage.includes('both');
+  // Strict check: if it specifically mentions bride side/only, and doesn't contain groom/both
+  const isBrideOnly = coverage.includes('bride') && !coverage.includes('groom') && !coverage.includes('both');
+  // Otherwise, it is Both Side
+  const isBothSide = !isGroomOnly && !isBrideOnly;
 
-  const showBride = packageHas2Albums || isBothSide || isBrideOnly;
-  const showGroom = packageHas2Albums || isBothSide || isGroomOnly;
+  const showBride = isBothSide || isBrideOnly;
+  const showGroom = isBothSide || isGroomOnly;
 
   // Retrieve Bride Album Data with thorough fallback
   const rawBrideStatus = booking.brideAlbum?.status || (!isGroomOnly ? (booking.albumDesignStatus || 'Not Uploaded') : 'Not Uploaded');
