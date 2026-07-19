@@ -12,7 +12,7 @@ import {
   where,
   onSnapshot
 } from 'firebase/firestore';
-import { Booking, Payment, PendingOperation, CollectionName } from '../types';
+import { Booking, Payment, PendingOperation, CollectionName, FreelanceJob } from '../types';
 import { sendTelegramNotification } from './telegramService';
 
 enum OperationType {
@@ -83,7 +83,7 @@ function sanitizeObject<T>(obj: T): T {
 }
 
 const DB_NAME = 'asmaul_production_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 class OfflineService {
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -124,6 +124,9 @@ class OfflineService {
         }
         if (!idb.objectStoreNames.contains('metadata')) {
           idb.createObjectStore('metadata', { keyPath: 'key' });
+        }
+        if (!idb.objectStoreNames.contains('freelance_jobs')) {
+          idb.createObjectStore('freelance_jobs', { keyPath: 'id' });
         }
       };
 
@@ -556,6 +559,133 @@ class OfflineService {
     } else {
       await this.deleteFromStore('bookings', id);
       await this.queueOperation('bookings', 'delete', id);
+      this.notifyListeners();
+    }
+  }
+
+  // --- Freelance Job Operations ---
+  public async getFreelanceJobs(): Promise<FreelanceJob[]> {
+    if (this.getOnlineStatus() && auth.currentUser && !this.isDemoUser()) {
+      try {
+        const jobsCol = collection(db, 'freelance_jobs');
+        const q = query(jobsCol, where('userId', '==', auth.currentUser.uid));
+        const snapshot = await getDocs(q);
+        const remoteJobs: FreelanceJob[] = [];
+        snapshot.forEach(doc => {
+          remoteJobs.push(doc.data() as FreelanceJob);
+        });
+
+        // Sync with local store
+        const localJobs = await this.getStoreData<FreelanceJob>('freelance_jobs');
+        for (const remote of remoteJobs) {
+          const local = localJobs.find(l => l.id === remote.id);
+          if (!local || (remote.updatedAt || 0) > (local.updatedAt || 0)) {
+            await this.saveToStore('freelance_jobs', remote);
+          }
+        }
+        // Handle server-side deletions locally
+        const remoteIds = new Set(remoteJobs.map(r => r.id));
+        for (const local of localJobs) {
+          if (!remoteIds.has(local.id)) {
+            const outbox = await this.getOutbox();
+            const isPending = outbox.some(op => op.collection === 'freelance_jobs' && op.data.id === local.id);
+            if (!isPending) {
+              await this.deleteFromStore('freelance_jobs', local.id);
+            }
+          }
+        }
+
+        return remoteJobs.sort((a, b) => b.eventDate.localeCompare(a.eventDate));
+      } catch (error) {
+        console.error('Error fetching freelance jobs directly from Firestore:', error);
+      }
+    }
+    const data = await this.getStoreData<FreelanceJob>('freelance_jobs');
+    return data.sort((a, b) => b.eventDate.localeCompare(a.eventDate));
+  }
+
+  public async addFreelanceJob(job: FreelanceJob): Promise<void> {
+    const userId = auth.currentUser?.uid;
+    if (!userId) {
+      throw new Error('User must be logged in to add a freelance job.');
+    }
+    job.userId = userId;
+    job.createdAt = job.createdAt || Date.now();
+    job.updatedAt = Date.now();
+
+    const sanitizedJob = sanitizeObject(job);
+
+    if (this.getOnlineStatus() && !this.isDemoUser()) {
+      try {
+        await setDoc(doc(db, 'freelance_jobs', sanitizedJob.id), sanitizedJob);
+        await this.saveToStore('freelance_jobs', sanitizedJob);
+        this.notifyListeners();
+      } catch (error: any) {
+        if (error?.code === 'permission-denied' || error?.message?.includes('permission')) {
+          handleFirestoreError(error, OperationType.WRITE, 'freelance_jobs');
+        }
+        console.error('Firestore write failed for addFreelanceJob:', error);
+        throw error;
+      }
+    } else {
+      await this.saveToStore('freelance_jobs', sanitizedJob);
+      await this.queueOperation('freelance_jobs', 'create', sanitizedJob);
+      this.notifyListeners();
+    }
+
+    // Trigger Telegram notification for new Freelance Job
+    try {
+      sendTelegramNotification('Freelance Job Created', sanitizedJob);
+    } catch (e) {
+      console.error('Error sending telegram notification for addFreelanceJob:', e);
+    }
+  }
+
+  public async updateFreelanceJob(job: FreelanceJob): Promise<void> {
+    const userId = auth.currentUser?.uid;
+    if (!userId) {
+      throw new Error('User must be logged in to update a freelance job.');
+    }
+    job.userId = userId;
+    job.updatedAt = Date.now();
+
+    const sanitizedJob = sanitizeObject(job);
+
+    if (this.getOnlineStatus() && !this.isDemoUser()) {
+      try {
+        await setDoc(doc(db, 'freelance_jobs', sanitizedJob.id), sanitizedJob);
+        await this.saveToStore('freelance_jobs', sanitizedJob);
+        this.notifyListeners();
+      } catch (error: any) {
+        if (error?.code === 'permission-denied' || error?.message?.includes('permission')) {
+          handleFirestoreError(error, OperationType.WRITE, 'freelance_jobs');
+        }
+        console.error('Firestore write failed for updateFreelanceJob:', error);
+        throw error;
+      }
+    } else {
+      await this.saveToStore('freelance_jobs', sanitizedJob);
+      await this.queueOperation('freelance_jobs', 'update', sanitizedJob);
+      this.notifyListeners();
+    }
+  }
+
+  public async deleteFreelanceJob(id: string): Promise<void> {
+    if (this.getOnlineStatus() && !this.isDemoUser()) {
+      try {
+        await deleteDoc(doc(db, 'freelance_jobs', id));
+        await this.deleteFromStore('freelance_jobs', id);
+        this.notifyListeners();
+      } catch (error: any) {
+        if (error?.code === 'permission-denied' || error?.message?.includes('permission')) {
+          handleFirestoreError(error, OperationType.DELETE, `freelance_jobs/${id}`);
+        }
+        console.error('Firestore delete failed for deleteFreelanceJob:', error);
+        throw error;
+      }
+    } else {
+      await this.deleteFromStore('freelance_jobs', id);
+      await this.queueOperation('freelance_jobs', 'delete', id);
       this.notifyListeners();
     }
   }
@@ -1052,6 +1182,18 @@ class OfflineService {
                 await this.setMetadata('brand_settings', sanitizeObject(settingsData));
                 await setDoc(doc(db, 'settings', auth.currentUser.uid), sanitizeObject(settingsData));
               }
+            } else if (op.collection === 'freelance_jobs') {
+              if (op.type === 'delete') {
+                const docId = typeof op.data === 'string' ? op.data : op.data.id;
+                await deleteDoc(doc(db, 'freelance_jobs', docId));
+              } else {
+                op.data.updatedAt = Date.now();
+                if (auth.currentUser) {
+                  op.data.userId = auth.currentUser.uid;
+                  await this.saveToStore('freelance_jobs', sanitizeObject(op.data));
+                }
+                await setDoc(doc(db, 'freelance_jobs', op.data.id), sanitizeObject(op.data));
+              }
             }
             // Clear successfully synced outbox operation
             await this.deleteFromStore('outbox', op.id);
@@ -1213,6 +1355,61 @@ class OfflineService {
           local.userId = userId;
           local.updatedAt = local.updatedAt || Date.now();
           await setDoc(doc(db, 'settings', userId), local);
+        }
+      }
+
+      // 4. Pull freelance_jobs
+      const jobsCol = collection(db, 'freelance_jobs');
+      const jobsQuery = query(jobsCol, where('userId', '==', userId));
+      let jobsSnap;
+      try {
+        jobsSnap = await getDocs(jobsQuery);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, 'freelance_jobs');
+      }
+      
+      const remoteJobsMap = new Map<string, FreelanceJob>();
+      jobsSnap.forEach(d => {
+        remoteJobsMap.set(d.id, d.data() as FreelanceJob);
+      });
+
+      const localJobs = await this.getStoreData<FreelanceJob>('freelance_jobs');
+      const jobOutboxIds = new Set(
+        outbox.filter(op => op.collection === 'freelance_jobs').map(op => {
+          if (op.type === 'delete') return typeof op.data === 'string' ? op.data : op.data.id;
+          return op.data.id;
+        })
+      );
+
+      for (const local of localJobs) {
+        const remote = remoteJobsMap.get(local.id);
+        if (remote) {
+          const localUpdated = local.updatedAt || local.createdAt || 0;
+          const remoteUpdated = remote.updatedAt || remote.createdAt || 0;
+
+          if (remoteUpdated > localUpdated) {
+            await this.saveToStore('freelance_jobs', remote);
+          } else if (localUpdated > remoteUpdated) {
+            if (!jobOutboxIds.has(local.id)) {
+              await this.queueOperation('freelance_jobs', 'update', local);
+            }
+          }
+        } else {
+          // Exists locally but not remotely. If not pending create/update, was deleted on server.
+          const isPendingCreateOrUpdate = outbox.some(op => op.collection === 'freelance_jobs' && op.type !== 'delete' && op.data.id === local.id);
+          if (!isPendingCreateOrUpdate && !jobOutboxIds.has(local.id)) {
+            await this.deleteFromStore('freelance_jobs', local.id);
+          }
+        }
+      }
+
+      for (const [id, remote] of remoteJobsMap.entries()) {
+        const localExists = localJobs.some(l => l.id === id);
+        if (!localExists) {
+          const isDeletedLocally = outbox.some(op => op.collection === 'freelance_jobs' && op.type === 'delete' && (op.data === id || op.data.id === id));
+          if (!isDeletedLocally) {
+            await this.saveToStore('freelance_jobs', remote);
+          }
         }
       }
     } catch (error) {

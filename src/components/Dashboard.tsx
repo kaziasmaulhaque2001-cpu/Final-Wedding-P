@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Booking, Payment } from '../types';
+import { Booking, Payment, FreelanceJob } from '../types';
 import { offlineService } from '../services/offlineService';
 import { useSyncState } from '../hooks/useSyncState';
 import { useBrand } from '../contexts/BrandContext';
@@ -59,7 +59,9 @@ import {
   Trash2,
   RefreshCw,
   FileText,
-  Download
+  Download,
+  Camera,
+  MapPin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -83,6 +85,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const { formatCurrency, settings } = useBrand();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [freelanceJobs, setFreelanceJobs] = useState<FreelanceJob[]>([]);
 
   // Dialog states for Quick Actions
   const [clientProgressOpen, setClientProgressOpen] = useState(false);
@@ -269,8 +272,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const loadData = async () => {
       const bData = await offlineService.getBookings();
       const pData = await offlineService.getPayments();
+      const fData = await offlineService.getFreelanceJobs();
       setBookings(bData);
       setPayments(pData);
+      setFreelanceJobs(fData);
     };
     loadData();
   }, [refreshTrigger, syncState.syncVersion]);
@@ -303,10 +308,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const collectionPercentage = totalRevenue > 0 ? Math.round((totalReceived / totalRevenue) * 100) : 0;
 
+  // Freelance calculations
+  const totalFreelanceRevenue = freelanceJobs.reduce((sum, j) => sum + j.totalAmount, 0);
+  const totalFreelanceReceived = freelanceJobs.reduce((sum, j) => sum + j.advancePayment, 0);
+  const totalFreelanceDue = freelanceJobs.reduce((sum, j) => sum + j.dueAmount, 0);
+  const freelanceCollectionPercentage = totalFreelanceRevenue > 0 ? Math.round((totalFreelanceReceived / totalFreelanceRevenue) * 100) : 0;
+
   // Next upcoming bookings
   const upcomingBookings = [...bookings]
     .filter(b => b.status !== 'cancelled' && b.status !== 'completed' && new Date(b.weddingDate) >= new Date('2026-07-11'))
     .sort((a, b) => a.weddingDate.localeCompare(b.weddingDate))
+    .slice(0, 3);
+
+  // Next upcoming freelance jobs
+  const upcomingFreelanceJobs = [...freelanceJobs]
+    .filter(j => new Date(j.eventDate) >= new Date('2026-07-11'))
+    .sort((a, b) => a.eventDate.localeCompare(b.eventDate))
     .slice(0, 3);
 
   // Recent payments
@@ -847,6 +864,203 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             size="small"
                             className={`text-[9px] h-4.5 uppercase mt-1 font-bold border ${getStatusChipColor(b.status)}`}
                           />
+                        </Box>
+                      </Box>
+                    );
+                  })
+                )}
+              </Box>
+            </Box>
+          </Card>
+        </div>
+      </div>
+
+      {/* Freelance Assignments Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Freelance Collections summary card */}
+        <Card className="border border-[#D4AF37]/15 bg-gradient-to-b from-[#141413] to-[#080807] flex flex-col justify-between p-5 rounded-2xl shadow-xl">
+          <Box>
+            <Typography variant="h6" className="text-gold-gradient font-bold tracking-wider font-serif mb-1 uppercase text-sm sm:text-base flex items-center gap-2">
+              <Camera className="w-5 h-5 text-[#D4AF37]" /> Freelance Income
+            </Typography>
+            <Typography variant="caption" className="text-gray-500 block">
+              Overview of external freelance financial returns
+            </Typography>
+          </Box>
+
+          <Box className="flex flex-col items-center justify-center py-6">
+            <Box className="relative w-40 h-40 flex items-center justify-center">
+              <svg className="w-full h-full transform -rotate-90">
+                <circle
+                  cx="80"
+                  cy="80"
+                  r="65"
+                  className="stroke-gray-900"
+                  strokeWidth="8"
+                  fill="transparent"
+                />
+                <circle
+                  cx="80"
+                  cy="80"
+                  r="65"
+                  stroke="url(#premiumGoldGradient)"
+                  strokeWidth="10"
+                  fill="transparent"
+                  strokeDasharray={2 * Math.PI * 65}
+                  strokeDashoffset={2 * Math.PI * 65 * (1 - freelanceCollectionPercentage / 100)}
+                  strokeLinecap="round"
+                  className="transition-all duration-1000 ease-out"
+                />
+              </svg>
+              <Box className="absolute flex flex-col items-center justify-center">
+                <Typography variant="h4" className="font-mono font-bold text-white text-3xl">
+                  {freelanceCollectionPercentage}%
+                </Typography>
+                <Typography variant="caption" className="text-[#D4AF37] uppercase tracking-widest text-[9px] font-bold">
+                  Retained
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+
+          <Box className="space-y-3 pt-3 border-t border-[#D4AF37]/10">
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Freelance Income (Collected):</span>
+              <span className="font-mono font-bold text-green-400">{formatCurrency(totalFreelanceReceived)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Outstanding Due:</span>
+              <span className="font-mono font-bold text-amber-400">{formatCurrency(totalFreelanceDue)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Total Contract Value:</span>
+              <span className="font-mono font-bold text-[#D4AF37]">{formatCurrency(totalFreelanceRevenue)}</span>
+            </div>
+          </Box>
+        </Card>
+
+        {/* Upcoming Freelance Jobs List (Next 3) */}
+        <div className="lg:col-span-2">
+          <Card className="border border-[#D4AF37]/15 bg-gradient-to-b from-[#141413] to-[#080807] h-full p-5 rounded-2xl shadow-xl flex flex-col justify-between">
+            <Box>
+              <Box className="flex justify-between items-center mb-4">
+                <Box>
+                  <Typography variant="h6" className="text-gold-gradient font-bold tracking-wider font-serif uppercase text-sm sm:text-base">
+                    Upcoming Freelance Jobs
+                  </Typography>
+                  <Typography variant="caption" className="text-gray-500">
+                    Next scheduled external assignments and studio collaborations
+                  </Typography>
+                </Box>
+                <Button 
+                  variant="text" 
+                  onClick={() => setTab('freelance_jobs')}
+                  endIcon={<ArrowUpRight className="w-4 h-4" />}
+                  size="small"
+                  className="text-xs text-[#D4AF37]"
+                >
+                  Manage Jobs
+                </Button>
+              </Box>
+
+              <Box className="space-y-3.5">
+                {upcomingFreelanceJobs.length === 0 ? (
+                  <Box className="py-12 text-center text-gray-500 border border-dashed border-[#D4AF37]/20 rounded-xl text-xs sm:text-sm">
+                    No upcoming freelance jobs registered. Click below to add.
+                    <Box className="mt-3">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setTab('freelance_jobs')}
+                        className="border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/10 text-[10px] rounded"
+                      >
+                        Add Freelance Job
+                      </Button>
+                    </Box>
+                  </Box>
+                ) : (
+                  upcomingFreelanceJobs.map((j) => {
+                    const eventTypesString = j.eventTypes.includes('Others') && j.customEventType
+                      ? j.eventTypes.map(t => t === 'Others' ? `Others (${j.customEventType})` : t).join(', ')
+                      : j.eventTypes.join(', ');
+
+                    return (
+                      <Box 
+                        key={j.id} 
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl bg-black/40 border border-[#D4AF37]/10 hover:border-[#D4AF37]/35 transition-all gap-4"
+                      >
+                        <Box className="flex items-center gap-3">
+                          <Avatar className="w-10 h-10 border text-[#0D0D0C] font-serif font-bold text-sm flex-shrink-0 bg-gradient-to-br from-indigo-500 to-purple-600 border-indigo-400">
+                            {j.studioName[0]}
+                          </Avatar>
+                          <Box>
+                            <Box className="flex items-center gap-2 flex-wrap">
+                              <Typography variant="subtitle2" className="text-white font-bold font-serif text-sm">
+                                {j.studioName}
+                              </Typography>
+                              <Chip 
+                                label={j.paymentStatus.toUpperCase()}
+                                size="small"
+                                className={`text-[8px] h-4.5 px-1 uppercase font-bold ${
+                                  j.paymentStatus === 'Paid' ? 'bg-green-500/15 text-green-400 border border-green-500/30' :
+                                  j.paymentStatus === 'Partial' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' :
+                                  'bg-red-500/15 text-red-400 border border-red-500/30'
+                                }`}
+                              />
+                            </Box>
+                            {j.events && j.events.length > 0 ? (
+                              <Box className="mt-1 flex flex-col gap-1">
+                                {j.events.map((ev, idx) => {
+                                  const typeStr = ev.eventType === 'Others' && ev.customEventType
+                                    ? `Others (${ev.customEventType})`
+                                    : ev.eventType;
+                                  return (
+                                    <Typography key={idx} variant="caption" className="text-gray-400 text-[11px] block">
+                                      • <span className="text-white font-medium">{typeStr}</span> on <span className="text-indigo-300 font-mono">{ev.eventDate}</span>{ev.location ? ` @ ${ev.location}` : ''}
+                                    </Typography>
+                                  );
+                                })}
+                              </Box>
+                            ) : (
+                              <>
+                                <Typography variant="caption" className="text-gray-400 text-[11px] block truncate max-w-[280px] sm:max-w-[320px]">
+                                  {eventTypesString}
+                                </Typography>
+                                <Box className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500 font-medium">
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="w-3 h-3 text-indigo-400" />
+                                    {j.eventDate}
+                                  </span>
+                                  <span>•</span>
+                                  <span className="flex items-center gap-0.5">
+                                    <MapPin className="w-3 h-3 text-indigo-400" />
+                                    {j.location}
+                                  </span>
+                                </Box>
+                              </>
+                            )}
+                          </Box>
+                        </Box>
+                        <Box className="sm:text-right w-full sm:w-auto flex sm:flex-col justify-between sm:justify-center items-center sm:items-end border-t sm:border-0 pt-2 sm:pt-0 border-gold-glow/10">
+                          <Typography variant="body2" className="font-mono font-bold text-white text-sm">
+                            {formatCurrency(j.totalAmount)}
+                          </Typography>
+                          {j.dueAmount > 0 ? (
+                            <Typography variant="caption" className="text-amber-400 font-mono text-[10px]">
+                              Due: {formatCurrency(j.dueAmount)}
+                            </Typography>
+                          ) : (
+                            <Typography variant="caption" className="text-green-400 font-bold text-[10px] uppercase tracking-wider">
+                              Fully Settled
+                            </Typography>
+                          )}
+                          <Button
+                            size="small"
+                            onClick={() => setTab('freelance_jobs')}
+                            className="text-[9px] h-5 capitalize mt-1 font-bold text-[#D4AF37] hover:underline p-0 min-w-0"
+                          >
+                            View Job
+                          </Button>
                         </Box>
                       </Box>
                     );

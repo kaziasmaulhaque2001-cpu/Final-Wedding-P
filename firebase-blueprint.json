@@ -43,6 +43,40 @@
         "userId": { "type": "string" }
       },
       "required": ["id", "bookingId", "clientName", "amount", "date", "paymentMethod", "status", "createdAt", "updatedAt", "userId"]
+    },
+    "freelance_job": {
+      "title": "FreelanceJob",
+      "description": "Freelance job parameters and scheduling tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studioName": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "eventDate": { "type": "string" },
+        "location": { "type": "string" },
+        "eventTypes": { "type": "array" },
+        "customEventType": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "advancePayment": { "type": "number" },
+        "dueAmount": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["Pending", "Partial", "Paid"] },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "studioName", "contactPerson", "contactPhone", "eventDate", "location", "eventTypes", "totalAmount", "advancePayment", "dueAmount", "paymentStatus", "createdAt", "updatedAt", "userId"]
+    },
+    "seeding_metadata": {
+      "title": "SeedingMetadata",
+      "description": "Metadata document tracking whether seeding has been completed for a user",
+      "type": "object",
+      "properties": {
+        "seeded": { "type": "boolean" },
+        "seededAt": { "type": "number" }
+      },
+      "required": ["seeded", "seededAt"]
     }
   },
   "firestore": {
@@ -53,6 +87,14 @@
     "/payments/{paymentId}": {
       "schema": "payment",
       "description": "Collection of transactional settlements"
+    },
+    "/freelance_jobs/{jobId}": {
+      "schema": "freelance_job",
+      "description": "Collection of freelance job leads and scheduling"
+    },
+    "/seeding_metadata/{userId}": {
+      "schema": "seeding_metadata",
+      "description": "Metadata document tracking seed completion status by user ID"
     }
   }
 }

@@ -18,7 +18,8 @@ import { useSyncState } from './hooks/useSyncState';
 import { offlineService } from './services/offlineService';
 import { getStatusChipColor, getStatusLabel } from './utils/statusUtils';
 import { ClientPortalView } from './components/ClientPortalView';
-import { GeminiChat } from './components/GeminiChat';
+import { FreelanceJobsManager } from './components/FreelanceJobsManager';
+import { FreelancePlannerView } from './components/FreelancePlannerView';
 
 import { 
   Box, 
@@ -239,10 +240,11 @@ const AppContent: React.FC = () => {
   const sidebarItems = [
     { value: 'dashboard', label: 'Overview', icon: <LayoutDashboard className="w-5 h-5" /> },
     { value: 'bookings', label: 'Bookings Registry', icon: <Briefcase className="w-5 h-5" /> },
+    { value: 'freelance_jobs', label: 'Freelance Jobs', icon: <Camera className="w-5 h-5" /> },
+    { value: 'freelance_planner', label: 'Freelance Planner', icon: <CalendarIcon className="w-5 h-5 text-[#D4AF37]" /> },
     { value: 'payments', label: 'Financial Ledger', icon: <DollarSign className="w-5 h-5" /> },
     { value: 'calendar', label: 'Studio Planner', icon: <CalendarIcon className="w-5 h-5" /> },
     { value: 'search', label: 'Archive Search', icon: <Search className="w-5 h-5" /> },
-    { value: 'ai_copilot', label: 'Cinematic AI', icon: <Sparkles className="w-5 h-5" /> },
     { value: 'settings', label: 'Studio Settings', icon: <Settings className="w-5 h-5" /> },
   ];
 
@@ -295,8 +297,10 @@ const AppContent: React.FC = () => {
         );
       case 'settings':
         return <BrandSettingsView />;
-      case 'ai_copilot':
-        return <GeminiChat />;
+      case 'freelance_jobs':
+        return <FreelanceJobsManager refreshTrigger={refreshTrigger} />;
+      case 'freelance_planner':
+        return <FreelancePlannerView refreshTrigger={refreshTrigger} />;
       case 'dashboard':
       default:
         return (

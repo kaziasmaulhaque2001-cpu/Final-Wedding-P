@@ -98,6 +98,33 @@ export interface Booking {
   specialNotes?: string;
 }
 
+export interface FreelanceEvent {
+  eventType: string;
+  eventDate: string;
+  location?: string;
+  customEventType?: string;
+}
+
+export interface FreelanceJob {
+  id: string;
+  studioName: string;
+  contactPerson: string;
+  contactPhone: string;
+  eventDate: string; // YYYY-MM-DD
+  location: string;
+  eventTypes: string[]; // multi-select options: Wedding, Holud, Reception, etc.
+  customEventType?: string;
+  totalAmount: number;
+  advancePayment: number;
+  dueAmount: number; // automatically calculated: totalAmount - advancePayment
+  paymentStatus: 'Pending' | 'Partial' | 'Paid';
+  notes?: string;
+  createdAt: number;
+  updatedAt?: number;
+  userId?: string;
+  events?: FreelanceEvent[];
+}
+
 export interface FreelancerAssignment {
   freelancerName: string;
   eventType: 'Aiburo Bhat' | 'Mehendi' | 'Wedding' | 'Bidaay Boron' | 'Reception';
@@ -122,7 +149,7 @@ export interface Payment {
   userId?: string;
 }
 
-export type CollectionName = 'bookings' | 'payments' | 'settings';
+export type CollectionName = 'bookings' | 'payments' | 'settings' | 'freelance_jobs';
 
 export interface PendingOperation {
   id: string;

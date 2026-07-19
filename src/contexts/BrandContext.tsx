@@ -43,6 +43,7 @@ export interface BrandSettings {
   whatsappTemplateConfirmation?: string;
   whatsappTemplatePayment?: string;
   whatsappTemplateReminder?: string;
+  freelanceWhatsappTemplate?: string;
   autoBookingConfirmation?: boolean;
   autoPaymentConfirmation?: boolean;
   autoReminderMessages?: boolean;
@@ -188,6 +189,7 @@ const defaultSettings: BrandSettings = {
   whatsappTemplateConfirmation: 'Hi {customer_name}, your booking {booking_id} with Asmaul Production is confirmed! Total amount: {total_amount}. Thank you!',
   whatsappTemplatePayment: 'Hi {customer_name}, we have received your payment of {paid_amount} for booking {booking_id}. Outstanding balance: {outstanding_amount}. Thank you!',
   whatsappTemplateReminder: 'Hi {customer_name}, this is a gentle reminder for your upcoming wedding shoot on {wedding_date}. We look forward to capturing your special day!',
+  freelanceWhatsappTemplate: 'Hello {{Contact Person}},\n\nThank you for booking me as your freelance photographer.\n\nBooking Details:\n\n📅 Event Date:\n{{Event Date}}\n\n🎉 Events:\n{{Event Types}}\n\n📍 Location:\n{{Location}}\n\n💰 Total Amount:\n{{Total Amount}}\n\n💵 Advance:\n{{Advance}}\n\n💳 Due:\n{{Due Amount}}\n\nPlease find your Freelance Booking Confirmation PDF attached.\n\nThank you.\n\nRegards,\n{{Studio Name}}',
   autoBookingConfirmation: true,
   autoPaymentConfirmation: true,
   autoReminderMessages: true,

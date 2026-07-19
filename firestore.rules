@@ -49,6 +49,37 @@ service cloud.firestore {
         && payment.userId is string && payment.userId.size() <= 128;
     }
 
+    // Validation for Freelance Jobs
+    function isValidFreelanceJob(job) {
+      return job.keys().hasAll(['id', 'studioName', 'contactPerson', 'contactPhone', 'eventDate', 'location', 'eventTypes', 'totalAmount', 'advancePayment', 'dueAmount', 'paymentStatus', 'createdAt', 'updatedAt', 'userId'])
+        && job.id is string && job.id.size() <= 128
+        && job.studioName is string && job.studioName.size() <= 200
+        && job.contactPerson is string && job.contactPerson.size() <= 200
+        && job.contactPhone is string && job.contactPhone.size() <= 30
+        && job.eventDate is string && job.eventDate.size() <= 20
+        && job.location is string && job.location.size() <= 300
+        && job.eventTypes is list && job.eventTypes.size() <= 20
+        && (job.eventTypes.size() == 0 || job.eventTypes[0] is string)
+        && job.totalAmount is number
+        && job.advancePayment is number
+        && job.dueAmount is number
+        && job.paymentStatus in ['Pending', 'Partial', 'Paid']
+        && job.createdAt is number
+        && job.updatedAt is number
+        && job.userId is string && job.userId.size() <= 128
+        && (!('notes' in job) || (job.notes is string && job.notes.size() <= 5000))
+        && (!('customEventType' in job) || (job.customEventType is string && job.customEventType.size() <= 100))
+        && (!('events' in job) || (job.events is list));
+    }
+
+    // Validation for Seeding Metadata
+    function isValidSeedingMetadata(metadata) {
+      return metadata.keys().hasAll(['seeded', 'seededAt'])
+        && metadata.keys().size() == 2
+        && metadata.seeded is bool
+        && metadata.seededAt is number;
+    }
+
     // Bookings collection
     match /bookings/{bookingId} {
       allow get: if true;
@@ -111,6 +142,22 @@ service cloud.firestore {
     // Receipts collection
     match /receipts/{receiptId} {
       allow read, write: if isSignedIn();
+    }
+
+    // Freelance Jobs collection
+    match /freelance_jobs/{jobId} {
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId && isValidFreelanceJob(request.resource.data);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.auth.uid == request.resource.data.userId && isValidFreelanceJob(request.resource.data);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Seeding Metadata collection
+    match /seeding_metadata/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow create, update: if isSignedIn() && request.auth.uid == userId && isValidSeedingMetadata(request.resource.data);
+      allow delete: if isSignedIn() && request.auth.uid == userId;
     }
   }
 }

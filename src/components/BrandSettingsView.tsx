@@ -76,7 +76,7 @@ export const BrandSettingsView: React.FC = () => {
   const { user, logout } = useAuth();
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'profile' | 'branding' | 'bookings' | 'whatsapp' | 'telegram' | 'payments' | 'team' | 'sync' | 'account' | 'about'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'branding' | 'bookings' | 'whatsapp' | 'telegram' | 'payments' | 'team' | 'sync' | 'account' | 'about' | 'message_templates'>('profile');
 
   // Bookings state for assigned staff
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -200,6 +200,7 @@ export const BrandSettingsView: React.FC = () => {
   const [whatsappTemplateConfirmation, setWhatsappTemplateConfirmation] = useState(settings.whatsappTemplateConfirmation || '');
   const [whatsappTemplatePayment, setWhatsappTemplatePayment] = useState(settings.whatsappTemplatePayment || '');
   const [whatsappTemplateReminder, setWhatsappTemplateReminder] = useState(settings.whatsappTemplateReminder || '');
+  const [freelanceWhatsappTemplate, setFreelanceWhatsappTemplate] = useState(settings.freelanceWhatsappTemplate || '');
   const [autoBookingConfirmation, setAutoBookingConfirmation] = useState(settings.autoBookingConfirmation ?? true);
   const [autoPaymentConfirmation, setAutoPaymentConfirmation] = useState(settings.autoPaymentConfirmation ?? true);
   const [autoReminderMessages, setAutoReminderMessages] = useState(settings.autoReminderMessages ?? true);
@@ -283,6 +284,7 @@ export const BrandSettingsView: React.FC = () => {
       setWhatsappTemplateConfirmation(settings.whatsappTemplateConfirmation || '');
       setWhatsappTemplatePayment(settings.whatsappTemplatePayment || '');
       setWhatsappTemplateReminder(settings.whatsappTemplateReminder || '');
+      setFreelanceWhatsappTemplate(settings.freelanceWhatsappTemplate || '');
       setAutoBookingConfirmation(settings.autoBookingConfirmation ?? true);
       setAutoPaymentConfirmation(settings.autoPaymentConfirmation ?? true);
       setAutoReminderMessages(settings.autoReminderMessages ?? true);
@@ -479,6 +481,7 @@ export const BrandSettingsView: React.FC = () => {
           whatsappTemplateConfirmation,
           whatsappTemplatePayment,
           whatsappTemplateReminder,
+          freelanceWhatsappTemplate,
           autoBookingConfirmation,
           autoPaymentConfirmation,
           autoReminderMessages,
@@ -623,6 +626,7 @@ export const BrandSettingsView: React.FC = () => {
       whatsappTemplateConfirmation,
       whatsappTemplatePayment,
       whatsappTemplateReminder,
+      freelanceWhatsappTemplate,
       autoBookingConfirmation,
       autoPaymentConfirmation,
       autoReminderMessages,
@@ -760,6 +764,7 @@ export const BrandSettingsView: React.FC = () => {
     { id: 'branding', label: 'Branding & Aesthetics', icon: <Palette className="w-4 h-4" /> },
     { id: 'bookings', label: 'Booking Settings', icon: <Calendar className="w-4 h-4" /> },
     { id: 'whatsapp', label: 'WhatsApp Automation', icon: <Smartphone className="w-4 h-4" /> },
+    { id: 'message_templates', label: 'Message Templates', icon: <FileText className="w-4 h-4" /> },
     { id: 'telegram', label: 'Telegram Notifications', icon: <Bell className="w-4 h-4" /> },
     { id: 'payments', label: 'Payment & Invoice', icon: <DollarSign className="w-4 h-4" /> },
     { id: 'team', label: 'Team Directory', icon: <Users className="w-4 h-4" /> },
@@ -1512,42 +1517,134 @@ export const BrandSettingsView: React.FC = () => {
                     />
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+          )}
 
-                <Divider className="border-gray-800" />
-                <Typography variant="subtitle2" className="text-white uppercase tracking-wider text-[11px] font-bold">
-                  Dynamic WhatsApp Template Builders
-                </Typography>
+          {activeTab === 'message_templates' && (
+            <Card className="border border-[#D4AF37]/15 shadow-xl bg-[#141413]">
+              <CardContent className="p-6 space-y-6">
+                <div className="flex items-center gap-2 border-b border-[#D4AF37]/10 pb-3">
+                  <FileText className="w-5 h-5 text-[#D4AF37]" />
+                  <Typography variant="subtitle1" className="font-bold text-white tracking-wider font-serif uppercase text-sm">
+                    Message Templates Management
+                  </Typography>
+                </div>
+
                 <Typography variant="caption" className="text-gray-500 block text-[11px] leading-relaxed mb-4">
-                  Use placeholders: <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{customer_name}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{booking_id}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{total_amount}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{wedding_date}'}</code>
+                  Customize the automated WhatsApp templates dispatched to clients. Use double curly braces for freelance placeholders and single curly braces for wedding bookings. Click <b>Restore Default</b> to revert individual templates back to their studio standard at any time.
                 </Typography>
 
-                <div className="space-y-5">
-                  <TextField
-                    fullWidth
-                    label="Booking Confirmation Dispatcher Template"
-                    multiline
-                    rows={3}
-                    value={whatsappTemplateConfirmation}
-                    onChange={(e) => setWhatsappTemplateConfirmation(e.target.value)}
-                  />
+                <div className="space-y-6">
+                  {/* Wedding Confirmation */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Typography className="text-xs text-gray-400 font-medium">Wedding Booking Confirmation Template</Typography>
+                      <Button 
+                        size="small" 
+                        onClick={() => setWhatsappTemplateConfirmation('Hi {customer_name}, your booking {booking_id} with Asmaul Production is confirmed! Total amount: {total_amount}. Thank you!')}
+                        className="text-[10px] text-[#D4AF37] capitalize min-w-0 p-0 hover:underline"
+                        startIcon={<RotateCcw className="w-3 h-3" />}
+                      >
+                        Restore Default
+                      </Button>
+                    </div>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      value={whatsappTemplateConfirmation}
+                      onChange={(e) => setWhatsappTemplateConfirmation(e.target.value)}
+                      placeholder="e.g. Hi {customer_name}, your booking {booking_id}..."
+                    />
+                    <Typography className="text-[10px] text-gray-500">
+                      Placeholders: <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{customer_name}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{booking_id}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{total_amount}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{wedding_date}'}</code>
+                    </Typography>
+                  </div>
 
-                  <TextField
-                    fullWidth
-                    label="Payment Confirmation Receipt Template"
-                    multiline
-                    rows={3}
-                    value={whatsappTemplatePayment}
-                    onChange={(e) => setWhatsappTemplatePayment(e.target.value)}
-                  />
+                  <Divider className="border-gray-800" />
 
-                  <TextField
-                    fullWidth
-                    label="Upcoming Event Alert / Reminder Template"
-                    multiline
-                    rows={3}
-                    value={whatsappTemplateReminder}
-                    onChange={(e) => setWhatsappTemplateReminder(e.target.value)}
-                  />
+                  {/* Wedding Payment Confirmation */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Typography className="text-xs text-gray-400 font-medium">Wedding Payment Confirmation Receipt Template</Typography>
+                      <Button 
+                        size="small" 
+                        onClick={() => setWhatsappTemplatePayment('Hi {customer_name}, we have received your payment of {paid_amount} for booking {booking_id}. Outstanding balance: {outstanding_amount}. Thank you!')}
+                        className="text-[10px] text-[#D4AF37] capitalize min-w-0 p-0 hover:underline"
+                        startIcon={<RotateCcw className="w-3 h-3" />}
+                      >
+                        Restore Default
+                      </Button>
+                    </div>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      value={whatsappTemplatePayment}
+                      onChange={(e) => setWhatsappTemplatePayment(e.target.value)}
+                      placeholder="e.g. Hi {customer_name}, we have received your payment..."
+                    />
+                    <Typography className="text-[10px] text-gray-500">
+                      Placeholders: <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{customer_name}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{booking_id}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{paid_amount}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{outstanding_amount}'}</code>
+                    </Typography>
+                  </div>
+
+                  <Divider className="border-gray-800" />
+
+                  {/* Wedding Upcoming Reminder */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Typography className="text-xs text-gray-400 font-medium">Wedding Upcoming Event Alert / Reminder Template</Typography>
+                      <Button 
+                        size="small" 
+                        onClick={() => setWhatsappTemplateReminder('Hi {customer_name}, this is a gentle reminder for your upcoming wedding shoot on {wedding_date}. We look forward to capturing your special day!')}
+                        className="text-[10px] text-[#D4AF37] capitalize min-w-0 p-0 hover:underline"
+                        startIcon={<RotateCcw className="w-3 h-3" />}
+                      >
+                        Restore Default
+                      </Button>
+                    </div>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      value={whatsappTemplateReminder}
+                      onChange={(e) => setWhatsappTemplateReminder(e.target.value)}
+                      placeholder="e.g. Hi {customer_name}, this is a gentle reminder..."
+                    />
+                    <Typography className="text-[10px] text-gray-500">
+                      Placeholders: <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{customer_name}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{wedding_date}'}</code>
+                    </Typography>
+                  </div>
+
+                  <Divider className="border-gray-800" />
+
+                  {/* Freelance Jobs Confirmation Template */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Typography className="text-xs text-gray-400 font-medium">Freelance Job Confirmation Dispatcher Template</Typography>
+                      <Button 
+                        size="small" 
+                        onClick={() => setFreelanceWhatsappTemplate('Hello {{Contact Person}},\n\nThank you for booking me as your freelance photographer.\n\nBooking Details:\n\n📅 Event Date:\n{{Event Date}}\n\n🎉 Events:\n{{Event Types}}\n\n📍 Location:\n{{Location}}\n\n💰 Total Amount:\n{{Total Amount}}\n\n💵 Advance:\n{{Advance}}\n\n💳 Due:\n{{Due Amount}}\n\nPlease find your Freelance Booking Confirmation PDF attached.\n\nThank you.\n\nRegards,\n{{Studio Name}}')}
+                        className="text-[10px] text-[#D4AF37] capitalize min-w-0 p-0 hover:underline"
+                        startIcon={<RotateCcw className="w-3 h-3" />}
+                      >
+                        Restore Default
+                      </Button>
+                    </div>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={10}
+                      value={freelanceWhatsappTemplate}
+                      onChange={(e) => setFreelanceWhatsappTemplate(e.target.value)}
+                      placeholder="Hello {{Contact Person}}..."
+                    />
+                    <Typography className="text-[10px] text-gray-500">
+                      Placeholders: <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{{Contact Person}}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{{Event Date}}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{{Event Types}}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{{Location}}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{{Total Amount}}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{{Advance}}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{{Due Amount}}'}</code>, <code className="text-[#D4AF37] bg-black/40 px-1 py-0.5 rounded font-mono">{'{{Studio Name}}'}</code>
+                    </Typography>
+                  </div>
                 </div>
               </CardContent>
             </Card>
