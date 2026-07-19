@@ -7,37 +7,79 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { GoogleGenAI } from "@google/genai";
 
-// Initialize Gemini SDK with telemetry User-Agent
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      "User-Agent": "aistudio-build",
-    },
-  },
-});
+// Read Firebase Config with robust error handling
+let firebaseConfig: any = {};
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    console.log("Loaded Firebase config for project:", firebaseConfig.projectId);
+  } else {
+    console.warn("firebase-applet-config.json not found in root.");
+  }
+} catch (error) {
+  console.error("Error loading firebase-applet-config.json:", error);
+}
 
-// Read Firebase Config
-const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-
-// Initialize Firebase Admin SDK
-let firebaseApp;
+// Initialize Firebase Admin SDK with fallbacks
+let firebaseApp: any = null;
 try {
   if (getApps().length === 0) {
-    firebaseApp = initializeApp({
-      projectId: firebaseConfig.projectId,
-    });
+    if (firebaseConfig.projectId) {
+      firebaseApp = initializeApp({
+        projectId: firebaseConfig.projectId,
+      });
+    } else {
+      firebaseApp = initializeApp();
+    }
   } else {
     firebaseApp = getApps()[0];
   }
   console.log("Firebase Admin initialized successfully.");
 } catch (error) {
   console.warn("Firebase Admin initialization warning:", error);
+  try {
+    firebaseApp = initializeApp();
+    console.log("Firebase Admin initialized using absolute default fallback.");
+  } catch (fallbackError) {
+    console.error("Absolute failure to initialize Firebase Admin:", fallbackError);
+  }
 }
 
+// Obtain Firestore instance safely
 const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
-const firestoreDb = getFirestore(firebaseApp, dbId);
+let firestoreDb: any;
+try {
+  firestoreDb = firebaseApp ? getFirestore(firebaseApp, dbId) : getFirestore();
+  console.log(`Firestore DB initialized successfully (dbId: ${dbId}).`);
+} catch (error) {
+  console.warn("Could not initialize firestoreDb with app/dbId, falling back to default:", error);
+  try {
+    firestoreDb = getFirestore();
+  } catch (fallbackError) {
+    console.error("Critical: Absolutely unable to initialize Firestore Admin:", fallbackError);
+  }
+}
+
+// Lazy load Gemini Client to prevent server startup crashes when API keys are not yet configured
+let aiClient: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI {
+  if (!aiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is not configured in the environment.");
+    }
+    aiClient = new GoogleGenAI({
+      apiKey: apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+  }
+  return aiClient;
+}
 
 // --- Firestore REST API Fallbacks for Sandbox Permission Limitations ---
 
@@ -788,7 +830,7 @@ async function startServer() {
     }
     const idToken = authHeader.split("Bearer ")[1];
     try {
-      const decodedToken = await getAuth(firebaseApp).verifyIdToken(idToken);
+      const decodedToken = await (firebaseApp ? getAuth(firebaseApp) : getAuth()).verifyIdToken(idToken);
       req.user = decodedToken;
       req.idToken = idToken;
       next();
@@ -809,7 +851,7 @@ async function startServer() {
   app.post("/api/gemini/chat", authenticateUser, async (req: any, res) => {
     const { contents, systemInstruction } = req.body;
     try {
-      const response = await ai.models.generateContent({
+      const response = await getGeminiClient().models.generateContent({
         model: "gemini-3.5-flash",
         contents: contents,
         config: {
@@ -827,7 +869,7 @@ async function startServer() {
   app.post("/api/gemini/analyze", authenticateUser, async (req: any, res) => {
     const { prompt, context } = req.body;
     try {
-      const response = await ai.models.generateContent({
+      const response = await getGeminiClient().models.generateContent({
         model: "gemini-3.5-flash",
         contents: [
           { role: "user", parts: [{ text: `Context Details:\n${JSON.stringify(context)}\n\nAction / Prompt Request:\n${prompt}` }] }
