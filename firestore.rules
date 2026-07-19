@@ -72,14 +72,6 @@ service cloud.firestore {
         && (!('events' in job) || (job.events is list));
     }
 
-    // Validation for Seeding Metadata
-    function isValidSeedingMetadata(metadata) {
-      return metadata.keys().hasAll(['seeded', 'seededAt'])
-        && metadata.keys().size() == 2
-        && metadata.seeded is bool
-        && metadata.seededAt is number;
-    }
-
     // Bookings collection
     match /bookings/{bookingId} {
       allow get: if true;
@@ -151,13 +143,6 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId && isValidFreelanceJob(request.resource.data);
       allow update: if isSignedIn() && resource.data.userId == request.auth.uid && request.auth.uid == request.resource.data.userId && isValidFreelanceJob(request.resource.data);
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
-    }
-
-    // Seeding Metadata collection
-    match /seeding_metadata/{userId} {
-      allow get: if isSignedIn() && request.auth.uid == userId;
-      allow create, update: if isSignedIn() && request.auth.uid == userId && isValidSeedingMetadata(request.resource.data);
-      allow delete: if isSignedIn() && request.auth.uid == userId;
     }
   }
 }

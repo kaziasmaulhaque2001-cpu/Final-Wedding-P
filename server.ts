@@ -5,6 +5,17 @@ import { createServer as createViteServer } from "vite";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { GoogleGenAI } from "@google/genai";
+
+// Initialize Gemini SDK with telemetry User-Agent
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: {
+    headers: {
+      "User-Agent": "aistudio-build",
+    },
+  },
+});
 
 // Read Firebase Config
 const configPath = path.join(process.cwd(), "firebase-applet-config.json");
@@ -391,58 +402,6 @@ function constructTelegramMessage(eventType: string, booking: any, payment?: any
   }
 }
 
-function constructFreelanceTelegramMessage(eventType: string, job: any): string {
-  const studioName = job?.studioName || "N/A";
-  const contactPerson = job?.contactPerson || "N/A";
-  
-  const eventTypesString = job?.eventTypes && Array.isArray(job.eventTypes)
-    ? (job.eventTypes.includes('Others') && job.customEventType
-        ? job.eventTypes.map((t: string) => t === 'Others' ? `Others (${job.customEventType})` : t).join(', ')
-        : job.eventTypes.join(', '))
-    : (job?.eventType || "N/A");
-
-  let eventDateStr = "N/A";
-  if (job?.eventDate) {
-    const parts = job.eventDate.split("-");
-    eventDateStr = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : job.eventDate;
-  }
-
-  const location = job?.location || "N/A";
-  const totalAmount = job?.totalAmount ?? 0;
-  const advance = job?.advancePayment ?? job?.advance ?? 0;
-  const dueAmount = job?.dueAmount ?? (totalAmount - advance);
-  const paymentStatus = job?.paymentStatus || "Pending";
-
-  let title = "FREELANCE JOB NOTIFICATION";
-  if (eventType === 'Freelance Job Created') {
-    title = "✅ <b>NEW FREELANCE JOB CREATED</b>";
-  } else if (eventType === 'Freelance Reminder (7 days)') {
-    title = "⏰ <b>FREELANCE JOB REMINDER</b>\n(7 days to go!)";
-  } else if (eventType === 'Freelance Reminder (3 days)') {
-    title = "⏰ <b>FREELANCE JOB REMINDER</b>\n(3 days to go!)";
-  } else if (eventType === 'Freelance Reminder (1 day)') {
-    title = "⏰ <b>FREELANCE JOB REMINDER</b>\n(1 day to go!)";
-  } else if (eventType === 'Freelance Reminder (Today)') {
-    title = "🚨 <b>TODAY IS FREELANCE JOB EVENT DAY!</b>";
-  } else if (eventType === 'Freelance Reminder (1 day after pending)') {
-    title = "⚠️ <b>FREELANCE PAYMENT DUE REMINDER</b>\n(1 day after event)";
-  } else if (eventType.includes('Freelance Reminder (Overdue Repeat)')) {
-    title = `⚠️ <b>FREELANCE PAYMENT DUE REMINDER</b>\n(Overdue Repeat - ${eventType.split(' - ')[1] || 'Pending'})`;
-  }
-
-  return `📸 <b>ASMAUL PRODUCTION</b>\n\n` +
-         `${title}\n\n` +
-         `• <b>Studio/Company Name:</b> ${studioName}\n` +
-         `• <b>Contact Person:</b> ${contactPerson}\n` +
-         `• <b>Event Name:</b> ${eventTypesString}\n` +
-         `• <b>Event Date:</b> ${eventDateStr}\n` +
-         `• <b>Location:</b> ${location}\n` +
-         `• <b>Total Amount:</b> ₹${totalAmount}\n` +
-         `• <b>Advance:</b> ₹${advance}\n` +
-         `• <b>Due Amount:</b> ₹${dueAmount}\n` +
-         `• <b>Payment Status:</b> ${paymentStatus}`;
-}
-
 async function processTelegramRemindersAndSummaries(db: any) {
   try {
     const istOffset = 5.5 * 60 * 60 * 1000;
@@ -618,7 +577,7 @@ async function processTelegramRemindersAndSummaries(db: any) {
         }
       }
 
-      // Process Enhanced Freelance Jobs Reminders (7-point reminder rules)
+      // Process Freelance Jobs Reminders (1 day before and on event day)
       if (secureData.telegramReminderNotifications !== false) {
         for (const j of userFreelanceJobs) {
           if (!j.eventDate) continue;
@@ -632,54 +591,41 @@ async function processTelegramRemindersAndSummaries(db: any) {
           const diffTime = evDateMidnight.getTime() - todayMidnight.getTime();
           const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-          let reminderType: string | null = null;
-          let reminderKey: string | null = null;
+          // Only 1 day before (diffDays === 1) or on event day (diffDays === 0)
+          if (diffDays === 0 || diffDays === 1) {
+            if (diffDays === 0 && currentHourIST < 8) {
+              continue; // Wait until 8 AM on event day
+            }
 
-          if (diffDays === 7) {
-            reminderType = 'Freelance Reminder (7 days)';
-            reminderKey = `freelance_reminder_${j.id}_7days`;
-          } else if (diffDays === 3) {
-            reminderType = 'Freelance Reminder (3 days)';
-            reminderKey = `freelance_reminder_${j.id}_3days`;
-          } else if (diffDays === 1) {
-            reminderType = 'Freelance Reminder (1 day)';
-            reminderKey = `freelance_reminder_${j.id}_1day`;
-          } else if (diffDays === 0) {
-            if (currentHourIST >= 7) {
-              reminderType = 'Freelance Reminder (Today)';
-              reminderKey = `freelance_reminder_${j.id}_0days_7am`;
-            }
-          } else if (diffDays === -1) {
-            if (j.paymentStatus !== 'Paid') {
-              reminderType = 'Freelance Reminder (1 day after pending)';
-              reminderKey = `freelance_reminder_${j.id}_1day_after_pending`;
-            }
-          } else if (diffDays < -1) {
-            const overdueDays = Math.abs(diffDays);
-            if (j.paymentStatus !== 'Paid' && (overdueDays - 1) % 3 === 0) {
-              reminderType = `Freelance Reminder (Overdue Repeat) - ${overdueDays} days overdue`;
-              reminderKey = `freelance_reminder_${j.id}_overdue_repeat_${overdueDays}days`;
-            }
-          }
-
-          if (reminderType && reminderKey) {
+            const reminderKey = `freelance_reminder_${j.id}_${diffDays}days`;
             const reminderDocRef = db.collection("telegram_reminders").doc(reminderKey);
             const reminderDoc = await reminderDocRef.get();
-
+            
             if (!reminderDoc.exists) {
-              const message = constructFreelanceTelegramMessage(reminderType, j);
+              let message = "";
+              const eventTypesString = j.eventTypes && Array.isArray(j.eventTypes)
+                ? (j.eventTypes.includes('Others') && j.customEventType
+                    ? j.eventTypes.map((t: string) => t === 'Others' ? `Others (${j.customEventType})` : t).join(', ')
+                    : j.eventTypes.join(', '))
+                : "N/A";
+
+              if (diffDays === 0) {
+                message = `📸 <b>ASMAUL PRODUCTION</b>\n\n🚨 <b>TODAY IS FREELANCE JOB EVENT DAY!</b>\n\n🏢 <b>Studio/Company:</b>\n${j.studioName || "N/A"}\n\n💍 <b>Event Types:</b>\n${eventTypesString}\n\n📅 <b>Date:</b>\nToday (${j.eventDate.split('-').reverse().join('/')})\n\n📍 <b>Location:</b>\n${j.location || "N/A"}\n\n💰 <b>Due Amount:</b>\n₹${j.dueAmount || 0}\n\n📝 <b>Notes:</b>\n${j.notes || "None"}`;
+              } else {
+                message = `📸 <b>ASMAUL PRODUCTION</b>\n\n⏰ <b>UPCOMING FREELANCE JOB REMINDER</b>\n(1 day to go!)\n\n🏢 <b>Studio/Company:</b>\n${j.studioName || "N/A"}\n\n💍 <b>Event Types:</b>\n${eventTypesString}\n\n📅 <b>Date:</b>\n${j.eventDate.split('-').reverse().join('/')}\n\n📍 <b>Location:</b>\n${j.location || "N/A"}\n\n💰 <b>Due Amount:</b>\n₹${j.dueAmount || 0}\n\n📝 <b>Notes:</b>\n${j.notes || "None"}`;
+              }
+
               const success = await sendTelegramWithRetry(botToken, chatId, message);
               if (success) {
                 await reminderDocRef.set({
                   sentAt: Date.now(),
                   jobId: j.id,
                   diffDays,
-                  reminderType,
                   userId
                 });
-                await logTelegramStatus(userId, reminderType, 'success', chatId, message);
+                await logTelegramStatus(userId, `Freelance Reminder (${diffDays === 0 ? "Today" : "1 Day"})`, 'success', chatId, message);
               } else {
-                await logTelegramStatus(userId, reminderType, 'failed', chatId, message, "Failed after max retries");
+                await logTelegramStatus(userId, `Freelance Reminder (${diffDays === 0 ? "Today" : "1 Day"})`, 'failed', chatId, message, "Failed after max retries");
               }
             }
           }
@@ -857,6 +803,44 @@ async function startServer() {
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // Gemini Chat endpoint
+  app.post("/api/gemini/chat", authenticateUser, async (req: any, res) => {
+    const { contents, systemInstruction } = req.body;
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction || "You are the Cinematic AI Copilot for Asmaul Production, a professional photography and videography studio management platform. Assist users with managing client bookings, payment tracking, photo album workflows, and crafting stunning client experiences. Keep answers highly professional, clean, and helpful."
+        }
+      });
+      res.json({ text: response.text });
+    } catch (error: any) {
+      console.error("Error in Gemini chat:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Gemini Content Intelligence analyzer endpoint
+  app.post("/api/gemini/analyze", authenticateUser, async (req: any, res) => {
+    const { prompt, context } = req.body;
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: [
+          { role: "user", parts: [{ text: `Context Details:\n${JSON.stringify(context)}\n\nAction / Prompt Request:\n${prompt}` }] }
+        ],
+        config: {
+          systemInstruction: "You are the Cinematic AI Copilot for Asmaul Production. Analyze the provided context meticulously, suggest enhancements or drafts, write professional customer emails, create Telegram templates, and provide concise, elegant output."
+        }
+      });
+      res.json({ text: response.text });
+    } catch (error: any) {
+      console.error("Error in Gemini analysis:", error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Get Telegram Secure Config (checks if token is set, but masks it)
@@ -1050,42 +1034,34 @@ async function startServer() {
       const { botToken, chatId } = secureData;
 
       // 1. Check Toggle Settings based on event categories
-      if (eventType === 'Freelance Job Created' || eventType.startsWith('Freelance')) {
+      if (eventType === 'New Booking' || eventType === 'Booking Cancelled' || eventType === 'Booking Updated') {
+        if (secureData.telegramBookingNotifications === false) {
+          return res.json({ success: true, message: "Booking notifications are disabled in settings." });
+        }
+      }
+      if (eventType.includes('Payment Received') || eventType === 'Payment Due Reminder') {
+        if (secureData.telegramPaymentNotifications === false) {
+          return res.json({ success: true, message: "Payment notifications are disabled in settings." });
+        }
+      }
+      if (eventType.includes('Reminder')) {
         if (secureData.telegramReminderNotifications === false) {
           return res.json({ success: true, message: "Reminder notifications are disabled in settings." });
         }
-      } else {
-        if (eventType === 'New Booking' || eventType === 'Booking Cancelled' || eventType === 'Booking Updated') {
-          if (secureData.telegramBookingNotifications === false) {
-            return res.json({ success: true, message: "Booking notifications are disabled in settings." });
-          }
+      }
+      if (eventType === 'Album Approved' || eventType === 'Album Changes Requested' || eventType === 'Album Design PDF Uploaded') {
+        if (secureData.telegramAlbumNotifications === false) {
+          return res.json({ success: true, message: "Album notifications are disabled in settings." });
         }
-        if (eventType.includes('Payment Received') || eventType === 'Payment Due Reminder') {
-          if (secureData.telegramPaymentNotifications === false) {
-            return res.json({ success: true, message: "Payment notifications are disabled in settings." });
-          }
-        }
-        if (eventType.includes('Reminder')) {
-          if (secureData.telegramReminderNotifications === false) {
-            return res.json({ success: true, message: "Reminder notifications are disabled in settings." });
-          }
-        }
-        if (eventType === 'Album Approved' || eventType === 'Album Changes Requested' || eventType === 'Album Design PDF Uploaded') {
-          if (secureData.telegramAlbumNotifications === false) {
-            return res.json({ success: true, message: "Album notifications are disabled in settings." });
-          }
-        }
-        if (eventType === 'Project Completed' || eventType === 'Gallery Uploaded' || eventType === 'Project Delivered') {
-          if (secureData.telegramDeliveryNotifications === false) {
-            return res.json({ success: true, message: "Delivery notifications are disabled in settings." });
-          }
+      }
+      if (eventType === 'Project Completed' || eventType === 'Gallery Uploaded' || eventType === 'Project Delivered') {
+        if (secureData.telegramDeliveryNotifications === false) {
+          return res.json({ success: true, message: "Delivery notifications are disabled in settings." });
         }
       }
 
       // 2. Format Beautiful Message from Rich Templates
-      const message = (eventType === 'Freelance Job Created' || eventType.startsWith('Freelance'))
-        ? constructFreelanceTelegramMessage(eventType, booking)
-        : constructTelegramMessage(eventType, booking, payment);
+      const message = constructTelegramMessage(eventType, booking, payment);
 
       // 3. Send with retry
       const success = await sendTelegramWithRetry(botToken, chatId, message);

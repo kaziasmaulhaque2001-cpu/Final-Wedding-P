@@ -18,6 +18,7 @@ import { useSyncState } from './hooks/useSyncState';
 import { offlineService } from './services/offlineService';
 import { getStatusChipColor, getStatusLabel } from './utils/statusUtils';
 import { ClientPortalView } from './components/ClientPortalView';
+import { GeminiChat } from './components/GeminiChat';
 import { FreelanceJobsManager } from './components/FreelanceJobsManager';
 import { FreelancePlannerView } from './components/FreelancePlannerView';
 
@@ -245,6 +246,7 @@ const AppContent: React.FC = () => {
     { value: 'payments', label: 'Financial Ledger', icon: <DollarSign className="w-5 h-5" /> },
     { value: 'calendar', label: 'Studio Planner', icon: <CalendarIcon className="w-5 h-5" /> },
     { value: 'search', label: 'Archive Search', icon: <Search className="w-5 h-5" /> },
+    { value: 'ai_copilot', label: 'Cinematic AI', icon: <Sparkles className="w-5 h-5" /> },
     { value: 'settings', label: 'Studio Settings', icon: <Settings className="w-5 h-5" /> },
   ];
 
@@ -301,6 +303,8 @@ const AppContent: React.FC = () => {
         return <FreelanceJobsManager refreshTrigger={refreshTrigger} />;
       case 'freelance_planner':
         return <FreelancePlannerView refreshTrigger={refreshTrigger} />;
+      case 'ai_copilot':
+        return <GeminiChat />;
       case 'dashboard':
       default:
         return (

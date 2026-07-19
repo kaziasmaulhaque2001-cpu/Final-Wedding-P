@@ -632,13 +632,6 @@ class OfflineService {
       await this.queueOperation('freelance_jobs', 'create', sanitizedJob);
       this.notifyListeners();
     }
-
-    // Trigger Telegram notification for new Freelance Job
-    try {
-      sendTelegramNotification('Freelance Job Created', sanitizedJob);
-    } catch (e) {
-      console.error('Error sending telegram notification for addFreelanceJob:', e);
-    }
   }
 
   public async updateFreelanceJob(job: FreelanceJob): Promise<void> {

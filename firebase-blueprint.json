@@ -67,16 +67,6 @@
         "userId": { "type": "string" }
       },
       "required": ["id", "studioName", "contactPerson", "contactPhone", "eventDate", "location", "eventTypes", "totalAmount", "advancePayment", "dueAmount", "paymentStatus", "createdAt", "updatedAt", "userId"]
-    },
-    "seeding_metadata": {
-      "title": "SeedingMetadata",
-      "description": "Metadata document tracking whether seeding has been completed for a user",
-      "type": "object",
-      "properties": {
-        "seeded": { "type": "boolean" },
-        "seededAt": { "type": "number" }
-      },
-      "required": ["seeded", "seededAt"]
     }
   },
   "firestore": {
@@ -91,10 +81,6 @@
     "/freelance_jobs/{jobId}": {
       "schema": "freelance_job",
       "description": "Collection of freelance job leads and scheduling"
-    },
-    "/seeding_metadata/{userId}": {
-      "schema": "seeding_metadata",
-      "description": "Metadata document tracking seed completion status by user ID"
     }
   }
 }
