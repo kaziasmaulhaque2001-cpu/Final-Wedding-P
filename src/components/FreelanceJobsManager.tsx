@@ -60,17 +60,25 @@ import {
 } from '../utils/freelancePdfGenerator';
 import { PDFPreviewDialog } from './PDFPreviewDialog';
 
-const EVENT_TYPE_OPTIONS = [
-  'Wedding',
-  'Holud',
-  'Reception',
-  'Engagement',
-  'Pre-Wedding',
-  'Birthday',
-  'Anniversary',
-  'Aqd/Kabin',
-  'Others'
-];
+const getCategoryFromEvents = (events: any[]): 'Wedding' | 'Birthday' | 'Anniversary' | 'Corporate' | 'Others' => {
+  if (!events || events.length === 0) return 'Others';
+  const firstType = events[0].eventType;
+  const weddingFunctions = ['Aiburo Bhat', 'Mehendi', 'Gaye Holud', 'Wedding', 'Bidaay', 'Boron', 'Reception'];
+  if (events.some(e => weddingFunctions.includes(e.eventType))) {
+    return 'Wedding';
+  }
+  if (firstType === 'Birthday Celebration') {
+    return 'Birthday';
+  }
+  if (firstType === 'Anniversary Celebration') {
+    return 'Anniversary';
+  }
+  const corporateFunctions = ['Seminar', 'Conference', 'Product Launch', 'Office Event'];
+  if (corporateFunctions.includes(firstType)) {
+    return 'Corporate';
+  }
+  return 'Others';
+};
 
 interface FreelanceJobsManagerProps {
   refreshTrigger?: number;
@@ -127,6 +135,48 @@ export const FreelanceJobsManager: React.FC<FreelanceJobsManagerProps> = ({ refr
       customEventType?: string;
     }>
   });
+
+  // Category-based Event selection state
+  const [selectedCategory, setSelectedCategory] = useState<'Wedding' | 'Birthday' | 'Anniversary' | 'Corporate' | 'Others'>('Wedding');
+  
+  const [weddingFunctions, setWeddingFunctions] = useState<Record<string, { selected: boolean; date: string }>>({
+    'Aiburo Bhat': { selected: false, date: '' },
+    'Mehendi': { selected: false, date: '' },
+    'Gaye Holud': { selected: false, date: '' },
+    'Wedding': { selected: false, date: '' },
+    'Bidaay': { selected: false, date: '' },
+    'Boron': { selected: false, date: '' },
+    'Reception': { selected: false, date: '' }
+  });
+
+  const [birthdayDate, setBirthdayDate] = useState('');
+  const [anniversaryDate, setAnniversaryDate] = useState('');
+  const [corporateType, setCorporateType] = useState('Seminar');
+  const [corporateDate, setCorporateDate] = useState('');
+  const [customEvents, setCustomEvents] = useState<Array<{ name: string; date: string }>>([{ name: '', date: '' }]);
+
+  const handleAddCustomEvent = () => {
+    setCustomEvents(prev => [...prev, { name: '', date: '' }]);
+  };
+
+  const handleRemoveCustomEvent = (index: number) => {
+    if (customEvents.length <= 1) {
+      showSnackbar('At least one custom event is required.', 'warning');
+      return;
+    }
+    setCustomEvents(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCustomEventChange = (index: number, field: 'name' | 'date', value: string) => {
+    setCustomEvents(prev => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        [field]: value
+      };
+      return updated;
+    });
+  };
 
   // Load jobs from offlineService
   const loadJobs = async () => {
@@ -208,6 +258,54 @@ export const FreelanceJobsManager: React.FC<FreelanceJobsManagerProps> = ({ refr
           customEventType: job.customEventType || ''
         }]
       });
+
+      const jobEvents = job.events || [];
+      const cat = getCategoryFromEvents(jobEvents);
+      setSelectedCategory(cat);
+
+      // Resets
+      const initialWeddingFunctions = {
+        'Aiburo Bhat': { selected: false, date: '' },
+        'Mehendi': { selected: false, date: '' },
+        'Gaye Holud': { selected: false, date: '' },
+        'Wedding': { selected: false, date: '' },
+        'Bidaay': { selected: false, date: '' },
+        'Boron': { selected: false, date: '' },
+        'Reception': { selected: false, date: '' }
+      };
+      setBirthdayDate('');
+      setAnniversaryDate('');
+      setCorporateType('Seminar');
+      setCorporateDate('');
+      setCustomEvents([{ name: '', date: '' }]);
+
+      if (cat === 'Wedding') {
+        jobEvents.forEach(ev => {
+          if (ev.eventType in initialWeddingFunctions) {
+            initialWeddingFunctions[ev.eventType as keyof typeof initialWeddingFunctions] = {
+              selected: true,
+              date: ev.eventDate
+            };
+          }
+        });
+        setWeddingFunctions(initialWeddingFunctions);
+      } else if (cat === 'Birthday') {
+        const ev = jobEvents.find(e => e.eventType === 'Birthday Celebration');
+        setBirthdayDate(ev?.eventDate || '');
+      } else if (cat === 'Anniversary') {
+        const ev = jobEvents.find(e => e.eventType === 'Anniversary Celebration');
+        setAnniversaryDate(ev?.eventDate || '');
+      } else if (cat === 'Corporate') {
+        const ev = jobEvents.find(e => ['Seminar', 'Conference', 'Product Launch', 'Office Event'].includes(e.eventType));
+        setCorporateType(ev?.eventType || 'Seminar');
+        setCorporateDate(ev?.eventDate || '');
+      } else if (cat === 'Others') {
+        const evs = jobEvents.map(ev => ({
+          name: ev.customEventType || ev.eventType,
+          date: ev.eventDate
+        }));
+        setCustomEvents(evs.length > 0 ? evs : [{ name: '', date: '' }]);
+      }
     } else {
       setEditingJob(null);
       setFormData({
@@ -230,6 +328,22 @@ export const FreelanceJobsManager: React.FC<FreelanceJobsManagerProps> = ({ refr
           customEventType: ''
         }]
       });
+
+      setSelectedCategory('Wedding');
+      setWeddingFunctions({
+        'Aiburo Bhat': { selected: false, date: '' },
+        'Mehendi': { selected: false, date: '' },
+        'Gaye Holud': { selected: false, date: '' },
+        'Wedding': { selected: false, date: '' },
+        'Bidaay': { selected: false, date: '' },
+        'Boron': { selected: false, date: '' },
+        'Reception': { selected: false, date: '' }
+      });
+      setBirthdayDate('');
+      setAnniversaryDate('');
+      setCorporateType('Seminar');
+      setCorporateDate('');
+      setCustomEvents([{ name: '', date: '' }]);
     }
     setIsFormOpen(true);
   };
@@ -294,39 +408,97 @@ export const FreelanceJobsManager: React.FC<FreelanceJobsManagerProps> = ({ refr
       return;
     }
 
-    if (!formData.events || formData.events.length === 0) {
-      showSnackbar('Please add at least one event.', 'warning');
-      return;
-    }
+    let eventsToSave: Array<{ eventType: string; eventDate: string; location?: string; customEventType?: string }> = [];
 
-    // Validate each event in the list
-    for (let i = 0; i < formData.events.length; i++) {
-      const ev = formData.events[i];
-      if (!ev.eventType) {
-        showSnackbar(`Please select an event type for Event #${i + 1}.`, 'warning');
+    if (selectedCategory === 'Wedding') {
+      const selectedFuncs = Object.entries(weddingFunctions)
+        .filter(([_, f]) => f.selected)
+        .map(([name, f]) => ({
+          eventType: name,
+          eventDate: f.date,
+          location: formData.location,
+          customEventType: ''
+        }));
+      
+      if (selectedFuncs.length === 0) {
+        showSnackbar('Please select at least one wedding function.', 'warning');
         return;
       }
-      if (!ev.eventDate) {
-        showSnackbar(`Please enter an event date for Event #${i + 1}.`, 'warning');
+      for (const ev of selectedFuncs) {
+        if (!ev.eventDate) {
+          showSnackbar(`Please enter an event date for the wedding function: ${ev.eventType}.`, 'warning');
+          return;
+        }
+      }
+      eventsToSave = selectedFuncs;
+    } else if (selectedCategory === 'Birthday') {
+      if (!birthdayDate) {
+        showSnackbar('Please enter an event date for the birthday celebration.', 'warning');
         return;
       }
-      if (ev.eventType === 'Others' && !ev.customEventType) {
-        showSnackbar(`Please enter a custom event name for Event #${i + 1}.`, 'warning');
+      eventsToSave = [{
+        eventType: 'Birthday Celebration',
+        eventDate: birthdayDate,
+        location: formData.location,
+        customEventType: ''
+      }];
+    } else if (selectedCategory === 'Anniversary') {
+      if (!anniversaryDate) {
+        showSnackbar('Please enter an event date for the anniversary celebration.', 'warning');
         return;
       }
+      eventsToSave = [{
+        eventType: 'Anniversary Celebration',
+        eventDate: anniversaryDate,
+        location: formData.location,
+        customEventType: ''
+      }];
+    } else if (selectedCategory === 'Corporate') {
+      if (!corporateDate) {
+        showSnackbar('Please enter an event date for the corporate event.', 'warning');
+        return;
+      }
+      eventsToSave = [{
+        eventType: corporateType,
+        eventDate: corporateDate,
+        location: formData.location,
+        customEventType: ''
+      }];
+    } else if (selectedCategory === 'Others') {
+      if (customEvents.length === 0) {
+        showSnackbar('Please add at least one custom event.', 'warning');
+        return;
+      }
+      for (let i = 0; i < customEvents.length; i++) {
+        const ev = customEvents[i];
+        if (!ev.name) {
+          showSnackbar(`Please enter a custom event name for Event #${i + 1}.`, 'warning');
+          return;
+        }
+        if (!ev.date) {
+          showSnackbar(`Please enter an event date for Event #${i + 1}.`, 'warning');
+          return;
+        }
+      }
+      eventsToSave = customEvents.map(ev => ({
+        eventType: 'Others',
+        eventDate: ev.date,
+        location: formData.location,
+        customEventType: ev.name
+      }));
     }
 
     // Compute legacy fields from the events list for backward compatibility
     // 1. Sort events by date to find the earliest event
-    const sortedEvents = [...formData.events]
+    const sortedEvents = [...eventsToSave]
       .filter(e => e.eventDate)
       .sort((a, b) => a.eventDate.localeCompare(b.eventDate));
 
-    const primaryEvent = sortedEvents[0] || formData.events[0];
+    const primaryEvent = sortedEvents[0] || eventsToSave[0];
     const computedEventDate = primaryEvent?.eventDate || '';
     const computedLocation = primaryEvent?.location || formData.location || '';
-    const computedEventTypes = formData.events.map(ev => ev.eventType);
-    const computedCustomEventType = formData.events.find(ev => ev.eventType === 'Others')?.customEventType || '';
+    const computedEventTypes = eventsToSave.map(ev => ev.eventType);
+    const computedCustomEventType = eventsToSave.find(ev => ev.eventType === 'Others')?.customEventType || '';
 
     try {
       if (editingJob) {
@@ -344,7 +516,7 @@ export const FreelanceJobsManager: React.FC<FreelanceJobsManagerProps> = ({ refr
           dueAmount: formData.dueAmount,
           paymentStatus: formData.paymentStatus,
           notes: formData.notes,
-          events: formData.events
+          events: eventsToSave
         };
         await offlineService.updateFreelanceJob(updatedJob);
         showSnackbar('Freelance job updated successfully.', 'success');
@@ -368,7 +540,7 @@ export const FreelanceJobsManager: React.FC<FreelanceJobsManagerProps> = ({ refr
           notes: formData.notes,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          events: formData.events
+          events: eventsToSave
         };
         await offlineService.addFreelanceJob(newJob);
         showSnackbar('Freelance job added successfully.', 'success');
@@ -728,7 +900,7 @@ export const FreelanceJobsManager: React.FC<FreelanceJobsManagerProps> = ({ refr
         }}
       >
         <form onSubmit={handleSaveJob}>
-          <DialogTitle className="border-b border-white/5 p-5 flex justify-between items-center bg-black/40">
+          <DialogTitle component="div" className="border-b border-white/5 p-5 flex justify-between items-center bg-black/40">
             <Typography variant="h6" className="font-serif font-bold text-[#D4AF37] uppercase tracking-wider">
               {editingJob ? '📸 Edit Freelance Job' : '📸 Add Freelance Job'}
             </Typography>
@@ -792,109 +964,260 @@ export const FreelanceJobsManager: React.FC<FreelanceJobsManagerProps> = ({ refr
                 />
               </Grid>
               
-              {/* Event Details Section (Multiple Events) */}
+              {/* Event Details Section (Category-Based Selection) */}
               <Grid size={12}>
                 <Typography className="text-xs font-serif font-bold text-[#D4AF37] tracking-wider uppercase mt-2 mb-3">
                   Events & Schedule
                 </Typography>
               </Grid>
 
-              {formData.events && formData.events.map((ev, index) => (
-                <Grid size={12} key={index} className="p-4 bg-black/30 border border-[#D4AF37]/15 rounded-xl mb-2">
-                  <Box className="flex justify-between items-center mb-3">
-                    <Typography variant="subtitle2" className="text-[#D4AF37] font-serif font-bold text-xs tracking-wider uppercase">
-                      Event #{index + 1}
+              <Grid size={12}>
+                <FormControl fullWidth size="small" required>
+                  <InputLabel id="event-category-label" className="text-gray-400">Event Category</InputLabel>
+                  <Select
+                    labelId="event-category-label"
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value as any)}
+                    input={<OutlinedInput label="Event Category" className="bg-black/40 text-white rounded-lg" />}
+                  >
+                    {['Wedding', 'Birthday', 'Anniversary', 'Corporate', 'Others'].map((cat) => (
+                      <MenuItem key={cat} value={cat} className="bg-[#141413] text-white hover:bg-white/10">
+                        {cat}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Wedding Category Setup */}
+              {selectedCategory === 'Wedding' && (
+                <Grid size={12}>
+                  <Box className="p-4 bg-black/30 border border-[#D4AF37]/15 rounded-xl">
+                    <Typography className="text-xs font-serif font-bold text-[#D4AF37] tracking-wider uppercase mb-4">
+                      Wedding Events & Functions
                     </Typography>
-                    {formData.events.length > 1 && (
-                      <Button
-                        size="small"
-                        onClick={() => handleRemoveEvent(index)}
-                        className="text-red-400 hover:text-red-300 normal-case min-w-0 p-0 text-xs font-semibold"
-                      >
-                        Remove Event
-                      </Button>
-                    )}
+                    <Grid container spacing={3}>
+                      {Object.keys(weddingFunctions).map((funcName) => {
+                        const funcData = weddingFunctions[funcName];
+                        return (
+                          <Grid size={12} key={funcName}>
+                            <Grid container spacing={2} className="items-center">
+                              <Grid size={{ xs: 12, sm: 5 }}>
+                                <Box className="flex items-center">
+                                  <Checkbox
+                                    checked={funcData.selected}
+                                    onChange={(e) => setWeddingFunctions(prev => ({
+                                      ...prev,
+                                      [funcName]: { ...prev[funcName], selected: e.target.checked }
+                                    }))}
+                                    sx={{
+                                      color: '#D4AF37',
+                                      '&.Mui-checked': {
+                                        color: '#D4AF37',
+                                      },
+                                    }}
+                                  />
+                                  <Typography className="text-sm text-white font-medium">
+                                    {funcName}
+                                  </Typography>
+                                </Box>
+                              </Grid>
+                              <Grid size={{ xs: 12, sm: 7 }}>
+                                {funcData.selected && (
+                                  <TextField
+                                    fullWidth
+                                    required
+                                    type="date"
+                                    label={`${funcName} Date`}
+                                    size="small"
+                                    value={funcData.date}
+                                    onChange={(e) => setWeddingFunctions(prev => ({
+                                      ...prev,
+                                      [funcName]: { ...prev[funcName], date: e.target.value }
+                                    }))}
+                                    slotProps={{
+                                      inputLabel: { shrink: true, className: 'text-gray-400' },
+                                      input: { className: 'bg-black/40 text-white rounded-lg' }
+                                    }}
+                                  />
+                                )}
+                              </Grid>
+                            </Grid>
+                          </Grid>
+                        );
+                      })}
+                    </Grid>
                   </Box>
+                </Grid>
+              )}
 
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <FormControl fullWidth size="small" required>
-                        <InputLabel id={`event-type-label-${index}`} className="text-gray-400">Event Type</InputLabel>
-                        <Select
-                          labelId={`event-type-label-${index}`}
-                          value={ev.eventType}
-                          onChange={(e) => handleEventFieldChange(index, 'eventType', e.target.value)}
-                          input={<OutlinedInput label="Event Type" className="bg-black/40 text-white rounded-lg" />}
-                        >
-                          {EVENT_TYPE_OPTIONS.map((name) => (
-                            <MenuItem key={name} value={name} className="bg-[#141413] text-white hover:bg-white/10">
-                              {name}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <TextField
-                        fullWidth
-                        required
-                        type="date"
-                        label="Event Date"
-                        size="small"
-                        value={ev.eventDate}
-                        onChange={(e) => handleEventFieldChange(index, 'eventDate', e.target.value)}
-                        slotProps={{
-                          inputLabel: { shrink: true, className: 'text-gray-400' },
-                          input: { className: 'bg-black/40 text-white rounded-lg' }
-                        }}
-                      />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, sm: 4 }}>
-                      <TextField
-                        fullWidth
-                        name="location"
-                        label="Location (Optional)"
-                        size="small"
-                        value={ev.location || ''}
-                        onChange={(e) => handleEventFieldChange(index, 'location', e.target.value)}
-                        slotProps={{
-                          inputLabel: { className: 'text-gray-400' },
-                          input: { className: 'bg-black/40 text-white rounded-lg' }
-                        }}
-                      />
-                    </Grid>
-
-                    {ev.eventType === 'Others' && (
+              {/* Birthday Category Setup */}
+              {selectedCategory === 'Birthday' && (
+                <Grid size={12}>
+                  <Box className="p-4 bg-black/30 border border-[#D4AF37]/15 rounded-xl">
+                    <Typography className="text-xs font-serif font-bold text-[#D4AF37] tracking-wider uppercase mb-3">
+                      Birthday Celebration
+                    </Typography>
+                    <Grid container spacing={2}>
                       <Grid size={12}>
                         <TextField
                           fullWidth
                           required
-                          label="Custom Event Name"
+                          type="date"
+                          label="Celebration Date"
                           size="small"
-                          value={ev.customEventType || ''}
-                          onChange={(e) => handleEventFieldChange(index, 'customEventType', e.target.value)}
+                          value={birthdayDate}
+                          onChange={(e) => setBirthdayDate(e.target.value)}
                           slotProps={{
-                            inputLabel: { className: 'text-gray-400' },
+                            inputLabel: { shrink: true, className: 'text-gray-400' },
                             input: { className: 'bg-black/40 text-white rounded-lg' }
                           }}
                         />
                       </Grid>
-                    )}
-                  </Grid>
+                    </Grid>
+                  </Box>
                 </Grid>
-              ))}
+              )}
 
-              <Grid size={12} className="flex justify-start mb-2">
-                <Button
-                  variant="outlined"
-                  onClick={handleAddEvent}
-                  className="border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/10 normal-case rounded-lg text-xs font-bold"
-                >
-                  + Add Another Event
-                </Button>
-              </Grid>
+              {/* Anniversary Category Setup */}
+              {selectedCategory === 'Anniversary' && (
+                <Grid size={12}>
+                  <Box className="p-4 bg-black/30 border border-[#D4AF37]/15 rounded-xl">
+                    <Typography className="text-xs font-serif font-bold text-[#D4AF37] tracking-wider uppercase mb-3">
+                      Anniversary Celebration
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={12}>
+                        <TextField
+                          fullWidth
+                          required
+                          type="date"
+                          label="Celebration Date"
+                          size="small"
+                          value={anniversaryDate}
+                          onChange={(e) => setAnniversaryDate(e.target.value)}
+                          slotProps={{
+                            inputLabel: { shrink: true, className: 'text-gray-400' },
+                            input: { className: 'bg-black/40 text-white rounded-lg' }
+                          }}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+                </Grid>
+              )}
+
+              {/* Corporate Category Setup */}
+              {selectedCategory === 'Corporate' && (
+                <Grid size={12}>
+                  <Box className="p-4 bg-black/30 border border-[#D4AF37]/15 rounded-xl">
+                    <Typography className="text-xs font-serif font-bold text-[#D4AF37] tracking-wider uppercase mb-3">
+                      Corporate Event
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <FormControl fullWidth size="small" required>
+                          <InputLabel id="corporate-type-label" className="text-gray-400">Corporate Event Type</InputLabel>
+                          <Select
+                            labelId="corporate-type-label"
+                            value={corporateType}
+                            onChange={(e) => setCorporateType(e.target.value)}
+                            input={<OutlinedInput label="Corporate Event Type" className="bg-black/40 text-white rounded-lg" />}
+                          >
+                            {['Seminar', 'Conference', 'Product Launch', 'Office Event'].map((name) => (
+                              <MenuItem key={name} value={name} className="bg-[#141413] text-white hover:bg-white/10">
+                                {name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <TextField
+                          fullWidth
+                          required
+                          type="date"
+                          label="Event Date"
+                          size="small"
+                          value={corporateDate}
+                          onChange={(e) => setCorporateDate(e.target.value)}
+                          slotProps={{
+                            inputLabel: { shrink: true, className: 'text-gray-400' },
+                            input: { className: 'bg-black/40 text-white rounded-lg' }
+                          }}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+                </Grid>
+              )}
+
+              {/* Others Category Setup */}
+              {selectedCategory === 'Others' && (
+                <Grid size={12}>
+                  <Box className="p-4 bg-black/30 border border-[#D4AF37]/15 rounded-xl">
+                    <Typography className="text-xs font-serif font-bold text-[#D4AF37] tracking-wider uppercase mb-3">
+                      Custom Events
+                    </Typography>
+                    {customEvents.map((ev, index) => (
+                      <Box key={index} className="p-3 bg-black/20 border border-white/5 rounded-lg mb-3">
+                        <Box className="flex justify-between items-center mb-2">
+                          <Typography variant="caption" className="text-gray-400 font-mono">
+                            Event #{index + 1}
+                          </Typography>
+                          {customEvents.length > 1 && (
+                            <Button
+                              size="small"
+                              onClick={() => handleRemoveCustomEvent(index)}
+                              className="text-red-400 hover:text-red-300 normal-case min-w-0 p-0 text-[11px] font-semibold"
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </Box>
+                        <Grid container spacing={2}>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <TextField
+                              fullWidth
+                              required
+                              label="Custom Event Name"
+                              size="small"
+                              value={ev.name}
+                              onChange={(e) => handleCustomEventChange(index, 'name', e.target.value)}
+                              slotProps={{
+                                inputLabel: { className: 'text-gray-400' },
+                                input: { className: 'bg-black/40 text-white rounded-lg' }
+                              }}
+                            />
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <TextField
+                              fullWidth
+                              required
+                              type="date"
+                              label="Event Date"
+                              size="small"
+                              value={ev.date}
+                              onChange={(e) => handleCustomEventChange(index, 'date', e.target.value)}
+                              slotProps={{
+                                inputLabel: { shrink: true, className: 'text-gray-400' },
+                                input: { className: 'bg-black/40 text-white rounded-lg' }
+                              }}
+                            />
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    ))}
+                    <Button
+                      variant="outlined"
+                      onClick={handleAddCustomEvent}
+                      className="border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/10 normal-case rounded-lg text-[11px] font-bold"
+                    >
+                      + Add Custom Event
+                    </Button>
+                  </Box>
+                </Grid>
+              )}
 
               {/* Financial Section */}
               <Grid size={12}>
@@ -1003,7 +1326,7 @@ export const FreelanceJobsManager: React.FC<FreelanceJobsManagerProps> = ({ refr
       >
         {selectedJob && (
           <Box>
-            <DialogTitle className="border-b border-white/5 p-5 flex justify-between items-center bg-black/40">
+            <DialogTitle component="div" className="border-b border-white/5 p-5 flex justify-between items-center bg-black/40">
               <Box>
                 <Typography variant="h6" className="font-serif font-bold text-[#D4AF37] tracking-wider leading-tight">
                   {selectedJob.studioName}
